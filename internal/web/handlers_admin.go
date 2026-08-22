@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -78,7 +79,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, v *view) {
 	list, err := s.store.Search(r.Context(), f.toStoreFilter(now, loc))
 	if err != nil {
 		s.log.Error("admin search", "err", err)
-		s.renderError(w, r, http.StatusInternalServerError, "Kunde inte läsa bokningarna", "Försök igen.")
+		s.errorPage(w, r, http.StatusInternalServerError, "error.noread", "error.form.detail")
 		return
 	}
 	stats, err := s.store.Stats(r.Context(), now)
@@ -107,9 +108,9 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, v *view) {
 		perResource = append(perResource, resStat{Resource: res, Count: counts[res.ID], Hours: hours[res.ID]})
 	}
 
-	v.Title = "Alla bokningar"
+	v.Title = i18n.T(v.Lang, "admin.title")
 	v.Data = map[string]any{
-		"Rows":        s.rows(list, loc),
+		"Rows":        s.rows(v.Lang, list, loc),
 		"Filter":      f,
 		"Resources":   s.cfg.Resources,
 		"Stats":       stats,
@@ -137,7 +138,7 @@ func (s *Server) handleAdminCSV(w http.ResponseWriter, r *http.Request, v *view)
 
 	list, err := s.store.Search(r.Context(), sf)
 	if err != nil {
-		http.Error(w, "kunde inte läsa bokningar", http.StatusInternalServerError)
+		http.Error(w, "could not read the bookings", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -149,13 +150,17 @@ func (s *Server) handleAdminCSV(w http.ResponseWriter, r *http.Request, v *view)
 	cw := csv.NewWriter(w)
 	cw.Comma = ';'
 	defer cw.Flush()
-	cw.Write([]string{"id", "resurs", "start", "slut", "timmar", "namn", "lagenhet",
-		"mattermost", "epost", "telefon", "meddelande", "status", "skapad"})
+	lang := v.Lang
+	cw.Write([]string{"id",
+		i18n.T(lang, "csv.resource"), i18n.T(lang, "csv.start"), i18n.T(lang, "csv.end"),
+		i18n.T(lang, "csv.hours"), i18n.T(lang, "csv.name"), i18n.T(lang, "csv.apartment"),
+		i18n.T(lang, "csv.mattermost"), i18n.T(lang, "csv.email"), i18n.T(lang, "csv.phone"),
+		i18n.T(lang, "csv.note"), i18n.T(lang, "csv.status"), i18n.T(lang, "csv.created")})
 	for _, b := range list {
 		res, ok := s.cfg.Resource(b.ResourceID)
 		name := b.ResourceID
 		if ok {
-			name = res.Name
+			name = res.NameFor(string(lang))
 		}
 		cw.Write([]string{
 			b.ID, name,
@@ -172,11 +177,11 @@ func (s *Server) handleAdminCancel(w http.ResponseWriter, r *http.Request, v *vi
 	id := r.PathValue("id")
 	b, err := s.store.Get(r.Context(), id)
 	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, "Bokningen hittades inte", "")
+		s.errorPage(w, r, http.StatusNotFound, "error.nobooking", "")
 		return
 	}
 	if err := s.store.Cancel(r.Context(), id, "", true, s.now()); err != nil {
-		s.renderError(w, r, http.StatusConflict, "Kunde inte avboka", "Bokningen är kanske redan avbokad.")
+		s.errorPage(w, r, http.StatusConflict, "error.nocancel", "error.nocancel.done")
 		return
 	}
 	res, ok := s.cfg.Resource(b.ResourceID)

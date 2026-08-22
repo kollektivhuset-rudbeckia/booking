@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 )
 
 // dayTab is one day in the horizontal date strip.
@@ -74,36 +76,35 @@ type dayPage struct {
 func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view) {
 	res, ok := s.cfg.Resource(r.PathValue("id"))
 	if !ok || !res.Active() {
-		s.renderError(w, r, http.StatusNotFound, "Resursen finns inte",
-			"Kontrollera länken, eller gå tillbaka till startsidan.")
+		s.errorPage(w, r, http.StatusNotFound, "error.noresource", "error.checklink.home")
 		return
 	}
 	now := s.now()
 	loc := s.cfg.Location()
-	v.Title = res.Name
+	v.Title = res.NameFor(string(v.Lang))
 	data := map[string]any{
 		"Resource": res,
-		"Rules":    summarize(res),
+		"Rules":    summarize(v.Lang, res),
 		"Errors":   nil,
 		"Form":     formFromIdentity(v.Ident),
 	}
 
 	switch res.Rules.Mode {
 	case config.ModeHours:
-		page, err := s.buildHourPage(r, res, now, loc, v.Ident.MMUsername)
+		page, err := s.buildHourPage(r, res, now, loc, v.Ident.MMUsername, v.Lang)
 		if err != nil {
 			s.log.Error("build hour page", "resource", res.ID, "err", err)
-			s.renderError(w, r, http.StatusInternalServerError, "Kunde inte läsa bokningarna", "Försök igen om en stund.")
+			s.errorPage(w, r, http.StatusInternalServerError, "error.noread", "error.tryagain")
 			return
 		}
 		data["Hours"] = page
 		v.Data = data
 		s.render(w, r, http.StatusOK, "resource_hours.html", v)
 	case config.ModeDays:
-		page, err := s.buildDayPage(r, res, now, loc, v.Ident.MMUsername)
+		page, err := s.buildDayPage(r, res, now, loc, v.Ident.MMUsername, v.Lang)
 		if err != nil {
 			s.log.Error("build day page", "resource", res.ID, "err", err)
-			s.renderError(w, r, http.StatusInternalServerError, "Kunde inte läsa bokningarna", "Försök igen om en stund.")
+			s.errorPage(w, r, http.StatusInternalServerError, "error.noread", "error.tryagain")
 			return
 		}
 		data["Days"] = page
@@ -112,7 +113,7 @@ func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view)
 	}
 }
 
-func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string) (*hourPage, error) {
+func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string, lang i18n.Lang) (*hourPage, error) {
 	// r.Form covers both the query string and a posted body, so a submission
 	// that fails validation re-renders the very day and slot the member chose.
 	q := formValues(r)
@@ -126,12 +127,12 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		switch {
 		case err != nil:
 			if res.Rules.CustomDuration {
-				customErr = TitleCase(err.Error()) + "."
+				customErr = i18n.T(lang, durationErrorKey(err), raw)
 			}
 		case booking.IsPreset(res, want):
 			dur = want
 		case res.Rules.CustomDuration:
-			if verr := booking.CheckDuration(res, want); verr != nil {
+			if verr := booking.CheckDuration(res, want, lang); verr != nil {
 				// Keep the typed value on screen next to the complaint.
 				customErr = verr.Message
 			} else {
@@ -159,7 +160,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		day = limit
 	}
 	if !chosen {
-		if first, err := s.firstFreeDay(r, res, day, limit, dur, now, loc); err != nil {
+		if first, err := s.firstFreeDay(r, res, day, limit, dur, now, loc, lang); err != nil {
 			return nil, err
 		} else if !first.IsZero() {
 			day = first
@@ -174,7 +175,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	}
 
 	page := &hourPage{Duration: dur, Param: booking.HoursParam(dur)}
-	page.Day = booking.BuildDay(res, day, dur, existing, now, loc, me)
+	page.Day = booking.BuildDay(res, day, dur, existing, now, loc, me, lang)
 
 	// The date strip covers two weeks, or less if the resource does not reach.
 	span := 14
@@ -195,27 +196,27 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		if d.After(limit) {
 			break
 		}
-		dv := booking.BuildDay(res, d, dur, stripBookings, now, loc, me)
+		dv := booking.BuildDay(res, d, dur, stripBookings, now, loc, me, lang)
 		page.Days = append(page.Days, dayTab{
 			Date:     d,
-			Label:    DateShort(d),
-			Weekday:  WeekdayShort(d),
-			Selected: ISODate(d) == ISODate(day),
+			Label:    i18n.DateShort(lang, d),
+			Weekday:  i18n.WeekdayShort(lang, d),
+			Selected: i18n.ISODate(d) == i18n.ISODate(day),
 			Free:     dv.FreeCount > 0,
-			Today:    ISODate(d) == ISODate(today),
+			Today:    i18n.ISODate(d) == i18n.ISODate(today),
 		})
 	}
 
 	page.AllowCustom = res.Rules.CustomDuration
 	if page.AllowCustom {
-		// The field opens when the member picks "egen längd", and stays open
+		// The field opens when the member picks their own length, and stays open
 		// whenever the current length is one they typed rather than a preset.
 		page.ShowCustom = q.Get("egen") == "1" ||
 			customErr != "" ||
 			!booking.IsPreset(res, dur)
-		page.MinLabel = booking.FormatDuration(time.Duration(res.Rules.MinDurationMinutes) * time.Minute)
-		page.MaxLabel = booking.FormatDuration(time.Duration(res.Rules.MaxDurationMinutes) * time.Minute)
-		page.StepLabel = booking.FormatDuration(time.Duration(res.Rules.SlotStepMinutes) * time.Minute)
+		page.MinLabel = i18n.Duration(time.Duration(res.Rules.MinDurationMinutes) * time.Minute)
+		page.MaxLabel = i18n.Duration(time.Duration(res.Rules.MaxDurationMinutes) * time.Minute)
+		page.StepLabel = i18n.Duration(time.Duration(res.Rules.SlotStepMinutes) * time.Minute)
 		page.CustomParam = booking.HoursParam(dur)
 		page.CustomError = customErr
 		if customErr != "" && q.Get("langd") != "" {
@@ -229,10 +230,10 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	// How many starts each length has on this day, so the buttons can show it.
 	for _, d := range res.Rules.Durations {
 		cand := time.Duration(d * float64(time.Hour))
-		dv := booking.BuildDay(res, day, cand, existing, now, loc, me)
+		dv := booking.BuildDay(res, day, cand, existing, now, loc, me, lang)
 		page.Durations = append(page.Durations, durationTab{
 			Param:    booking.HoursParam(cand),
-			Label:    booking.FormatDuration(cand),
+			Label:    i18n.Duration(cand),
 			Selected: cand == dur && !page.ShowCustom,
 			Free:     dv.FreeCount,
 		})
@@ -242,7 +243,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	if raw := q.Get("start"); raw != "" {
 		for i := range page.Day.Slots {
 			slot := page.Day.Slots[i]
-			if Clock(slot.Start.In(loc)) == raw && slot.Available {
+			if i18n.Clock(slot.Start.In(loc)) == raw && slot.Available {
 				page.Selected = &page.Day.Slots[i]
 				break
 			}
@@ -251,7 +252,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	return page, nil
 }
 
-func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string) (*dayPage, error) {
+func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string, lang i18n.Lang) (*dayPage, error) {
 	q := formValues(r)
 	today := truncDay(now.In(loc), loc)
 
@@ -287,22 +288,22 @@ func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Tim
 		to, errB := time.ParseInLocation("2006-01-02", page.To, loc)
 		switch {
 		case errA != nil || errB != nil:
-			page.RangeError = "Kunde inte läsa datumen."
+			page.RangeError = i18n.T(lang, "error.baddates")
 		case !to.After(from):
-			page.RangeError = "Utcheckningen måste vara efter incheckningen."
+			page.RangeError = i18n.T(lang, "error.checkoutfirst")
 		default:
 			start, end := booking.DayRange(res, from, to, loc)
 			nights := int(to.Sub(from).Hours()/24 + 0.5)
 			page.Start, page.End, page.Nights = start, end, nights
 			switch {
 			case nights < res.Rules.MinDays:
-				page.RangeError = "Kortaste bokning är " + Nights(res.Rules.MinDays) + "."
+				page.RangeError = i18n.T(lang, "error.shortest", i18n.Count(lang, "night", res.Rules.MinDays))
 			case nights > res.Rules.MaxDays:
-				page.RangeError = "Längsta bokning är " + Nights(res.Rules.MaxDays) + "."
+				page.RangeError = i18n.T(lang, "error.longest", i18n.Count(lang, "night", res.Rules.MaxDays))
 			case start.Before(now):
-				page.RangeError = "Tiden har redan passerat."
+				page.RangeError = i18n.T(lang, "error.past")
 			case start.After(now.AddDate(0, 0, res.Rules.MaxAdvanceDays)):
-				page.RangeError = "Du kan boka högst " + formatDays(res.Rules.MaxAdvanceDays) + " i förväg."
+				page.RangeError = i18n.T(lang, "error.toofar", i18n.Days(lang, res.Rules.MaxAdvanceDays))
 			default:
 				conflict, err := s.store.InRange(r.Context(), res.ID,
 					start.Add(-time.Duration(res.Rules.BufferMinutes)*time.Minute),
@@ -311,7 +312,7 @@ func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Tim
 					return nil, err
 				}
 				if len(conflict) > 0 {
-					page.RangeError = "Någon av nätterna är redan bokad."
+					page.RangeError = i18n.T(lang, "error.nighttaken")
 				} else {
 					page.RangeOK = true
 				}
@@ -347,7 +348,7 @@ func formFromIdentity(id auth.Identity) bookingForm {
 // firstFreeDay looks ahead for the first day with a bookable start time, up to
 // two weeks out. A zero time means it found nothing and the caller should keep
 // the day it already had.
-func (s *Server) firstFreeDay(r *http.Request, res config.Resource, from, limit time.Time, dur time.Duration, now time.Time, loc *time.Location) (time.Time, error) {
+func (s *Server) firstFreeDay(r *http.Request, res config.Resource, from, limit time.Time, dur time.Duration, now time.Time, loc *time.Location, lang i18n.Lang) (time.Time, error) {
 	const lookahead = 14
 	to := from.AddDate(0, 0, lookahead+1)
 	existing, err := s.store.InRange(r.Context(), res.ID, from.AddDate(0, 0, -1), to)
@@ -359,11 +360,23 @@ func (s *Server) firstFreeDay(r *http.Request, res config.Resource, from, limit 
 		if day.After(limit) {
 			break
 		}
-		if booking.BuildDay(res, day, dur, existing, now, loc, "").FreeCount > 0 {
+		if booking.BuildDay(res, day, dur, existing, now, loc, "", lang).FreeCount > 0 {
 			return day, nil
 		}
 	}
 	return time.Time{}, nil
+}
+
+// durationErrorKey names the catalogue phrase for an unreadable length.
+func durationErrorKey(err error) string {
+	switch {
+	case errors.Is(err, booking.ErrNoLength):
+		return "error.nolength"
+	case errors.Is(err, booking.ErrNotPositive):
+		return "error.notpositive"
+	default:
+		return "error.notanumber"
+	}
 }
 
 // formValues returns the request's combined query and body parameters.

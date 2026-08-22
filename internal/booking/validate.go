@@ -2,13 +2,14 @@ package booking
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -28,7 +29,8 @@ type Request struct {
 	Note       string
 }
 
-// Error is a validation failure phrased for the member reading the page.
+// Error is a validation failure phrased for the member reading the page, in
+// the language they are reading it in.
 type Error struct {
 	Field   string
 	Message string
@@ -39,35 +41,36 @@ func (e Error) Error() string { return e.Message }
 // Validate checks a request against the resource rules and the current
 // contents of the database. It returns the interval that must be free,
 // buffer included, so the caller can hand it straight to store.Create.
-func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, loc *time.Location) (blockFrom, blockTo time.Time, errs []Error) {
+func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, loc *time.Location, lang i18n.Lang) (blockFrom, blockTo time.Time, errs []Error) {
 	r := req.Resource
 	ru := r.Rules
+	name := r.NameFor(string(lang))
 
 	if !r.Active() {
-		return blockFrom, blockTo, []Error{{Message: fmt.Sprintf("%s går inte att boka just nu.", r.Name)}}
+		return blockFrom, blockTo, []Error{{Message: i18n.T(lang, "error.notbookable", name)}}
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		errs = append(errs, Error{Field: "name", Message: "Fyll i ditt namn."})
 	}
 	if store.Member(req.MMUsername) == "" {
-		errs = append(errs, Error{Field: "member", Message: "Välj vem i huset som bokar – bekräftelsen skickas i Mattermost."})
+		errs = append(errs, Error{Field: "member", Message: i18n.T(lang, "member.choose")})
 	}
 	if !req.End.After(req.Start) {
-		errs = append(errs, Error{Field: "time", Message: "Sluttiden måste vara efter starttiden."})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.endbeforestart")})
 		return blockFrom, blockTo, errs
 	}
 	if req.Start.Before(now.Add(time.Duration(ru.MinNoticeMinutes) * time.Minute)) {
 		errs = append(errs, Error{Field: "time", Message: "Tiden har redan passerat."})
 	}
 	if req.Start.After(now.AddDate(0, 0, ru.MaxAdvanceDays)) {
-		errs = append(errs, Error{Field: "time", Message: fmt.Sprintf("Du kan boka högst %d dagar i förväg.", ru.MaxAdvanceDays)})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.toofar", i18n.Days(lang, ru.MaxAdvanceDays))})
 	}
 
 	switch ru.Mode {
 	case config.ModeHours:
-		errs = append(errs, validateHours(r, req, loc)...)
+		errs = append(errs, validateHours(r, req, loc, lang)...)
 	case config.ModeDays:
-		errs = append(errs, validateDays(r, req, loc)...)
+		errs = append(errs, validateDays(r, req, loc, lang)...)
 	}
 
 	if len(errs) > 0 {
@@ -78,11 +81,10 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 	if ru.MaxActivePerUser > 0 {
 		n, err := st.CountActiveForUser(ctx, r.ID, req.MMUsername, now)
 		if err != nil {
-			return blockFrom, blockTo, []Error{{Message: "Kunde inte kontrollera dina bokningar. Försök igen."}}
+			return blockFrom, blockTo, []Error{{Message: i18n.T(lang, "error.readfailed")}}
 		}
 		if n >= ru.MaxActivePerUser {
-			errs = append(errs, Error{Message: fmt.Sprintf(
-				"Du har redan %d aktiva bokningar av %s (max %d). Avboka en först.", n, r.Name, ru.MaxActivePerUser)})
+			errs = append(errs, Error{Message: i18n.T(lang, "error.toomany", n, name, ru.MaxActivePerUser)})
 		}
 	}
 	if ru.MaxHoursPerWeekPerUser > 0 {
@@ -90,13 +92,12 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 		weekTo := req.Start.AddDate(0, 0, 7)
 		used, err := st.HoursForUserBetween(ctx, r.ID, req.MMUsername, weekFrom, weekTo)
 		if err != nil {
-			return blockFrom, blockTo, []Error{{Message: "Kunde inte kontrollera dina bokningar. Försök igen."}}
+			return blockFrom, blockTo, []Error{{Message: i18n.T(lang, "error.readfailed")}}
 		}
 		want := req.End.Sub(req.Start).Hours()
 		if used+want > ru.MaxHoursPerWeekPerUser {
-			errs = append(errs, Error{Message: fmt.Sprintf(
-				"Det skulle bli %.0f timmar på två veckor – gränsen är %.0f timmar för %s.",
-				used+want, ru.MaxHoursPerWeekPerUser, r.Name)})
+			errs = append(errs, Error{Message: i18n.T(lang, "error.weekhours",
+				used+want, ru.MaxHoursPerWeekPerUser, name)})
 		}
 	}
 	if len(errs) > 0 {
@@ -112,39 +113,38 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 	// conflict error; store.Create repeats it inside a transaction.
 	existing, err := st.InRange(ctx, r.ID, blockFrom, blockTo)
 	if err != nil {
-		return blockFrom, blockTo, []Error{{Message: "Kunde inte läsa befintliga bokningar. Försök igen."}}
+		return blockFrom, blockTo, []Error{{Message: i18n.T(lang, "error.readexisting")}}
 	}
 	if _, hit := blocked(req.Start, req.End, buffer, existing); hit {
-		errs = append(errs, Error{Field: "time", Message: "Tiden hann bli bokad. Välj en annan tid."})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.justtaken")})
 	}
 	return blockFrom, blockTo, errs
 }
 
-func validateHours(r config.Resource, req Request, loc *time.Location) []Error {
+func validateHours(r config.Resource, req Request, loc *time.Location, lang i18n.Lang) []Error {
 	ru := r.Rules
 	var errs []Error
 
 	dur := req.End.Sub(req.Start)
-	if err := CheckDuration(r, dur); err != nil {
+	if err := CheckDuration(r, dur, lang); err != nil {
 		errs = append(errs, *err)
 	}
 
 	local := req.Start.In(loc)
 	openFrom, openTo := dayWindow(r, local, loc)
 	if local.Before(openFrom) || req.End.In(loc).After(openTo) {
-		errs = append(errs, Error{Field: "time", Message: fmt.Sprintf(
-			"%s kan bokas mellan %s och %s.", r.Name, ru.OpenFrom, ru.OpenTo)})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.openhours",
+			r.NameFor(string(lang)), ru.OpenFrom, ru.OpenTo)})
 	}
 
 	step := time.Duration(ru.SlotStepMinutes) * time.Minute
 	if offset := local.Sub(openFrom) % step; offset != 0 {
-		errs = append(errs, Error{Field: "time", Message: fmt.Sprintf(
-			"Starttiden måste ligga på en %d-minutersgräns.", ru.SlotStepMinutes)})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.slotgrid", ru.SlotStepMinutes)})
 	}
 	return errs
 }
 
-func validateDays(r config.Resource, req Request, loc *time.Location) []Error {
+func validateDays(r config.Resource, req Request, loc *time.Location, lang i18n.Lang) []Error {
 	ru := r.Rules
 	var errs []Error
 
@@ -155,27 +155,20 @@ func validateDays(r config.Resource, req Request, loc *time.Location) []Error {
 	nights := int(ed.Sub(sd).Hours()/24 + 0.5)
 
 	if nights < ru.MinDays {
-		errs = append(errs, Error{Field: "time", Message: fmt.Sprintf(
-			"Kortaste bokning är %s.", pluralNights(ru.MinDays))})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.shortest",
+			i18n.Count(lang, "night", ru.MinDays))})
 	}
 	if nights > ru.MaxDays {
-		errs = append(errs, Error{Field: "time", Message: fmt.Sprintf(
-			"Längsta bokning är %s.", pluralNights(ru.MaxDays))})
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "error.longest",
+			i18n.Count(lang, "night", ru.MaxDays))})
 	}
 	return errs
-}
-
-func pluralNights(n int) string {
-	if n == 1 {
-		return "1 natt"
-	}
-	return fmt.Sprintf("%d nätter", n)
 }
 
 // CheckDuration reports whether a length is bookable for a resource: one of
 // the offered choices, or — when the resource allows it — any typed-in length
 // that fits the configured bounds and the slot grid.
-func CheckDuration(r config.Resource, dur time.Duration) *Error {
+func CheckDuration(r config.Resource, dur time.Duration, lang i18n.Lang) *Error {
 	ru := r.Rules
 	for _, d := range ru.Durations {
 		if durationOf(d) == dur {
@@ -183,8 +176,8 @@ func CheckDuration(r config.Resource, dur time.Duration) *Error {
 		}
 	}
 	if !ru.CustomDuration {
-		return &Error{Field: "duration", Message: fmt.Sprintf(
-			"Välj en av de tillåtna längderna: %s.", DurationList(ru.Durations))}
+		return &Error{Field: "duration", Message: i18n.T(lang, "error.pickduration",
+			i18n.DurationList(lang, ru.Durations))}
 	}
 
 	min := time.Duration(ru.MinDurationMinutes) * time.Minute
@@ -193,38 +186,45 @@ func CheckDuration(r config.Resource, dur time.Duration) *Error {
 
 	switch {
 	case dur < min:
-		return &Error{Field: "duration", Message: fmt.Sprintf(
-			"Kortaste bokning är %s.", FormatDuration(min))}
+		return &Error{Field: "duration", Message: i18n.T(lang, "error.shortest", i18n.Duration(min))}
 	case dur > max:
-		return &Error{Field: "duration", Message: fmt.Sprintf(
-			"Längsta bokning är %s.", FormatDuration(max))}
+		return &Error{Field: "duration", Message: i18n.T(lang, "error.longest", i18n.Duration(max))}
 	case dur%step != 0:
-		return &Error{Field: "duration", Message: fmt.Sprintf(
-			"Längden måste gå jämnt ut i %s. Prova %s eller %s.",
-			FormatDuration(step),
-			FormatDuration(dur/step*step),
-			FormatDuration((dur/step+1)*step))}
+		return &Error{Field: "duration", Message: i18n.T(lang, "error.stepduration",
+			i18n.Duration(step),
+			i18n.Duration(dur/step*step),
+			i18n.Duration((dur/step+1)*step))}
 	}
 	return nil
 }
 
 // ParseHours reads a typed-in length in hours. It accepts both "2.5" and the
-// Swedish "2,5", and rounds to whole minutes so floating point dust can never
-// turn 2.5 h into 2 h 29 min 59 s.
+// Swedish "2,5" whatever language the page is in — a Swedish keyboard types a
+// comma however the site is set — and rounds to whole minutes so floating
+// point dust can never turn 2.5 h into 2 h 29 min 59 s.
 func ParseHours(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.Replace(s, ",", ".", 1))
 	if s == "" {
-		return 0, fmt.Errorf("ingen längd angiven")
+		return 0, ErrNoLength
 	}
 	hours, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%q är inte ett tal", s)
+		return 0, ErrNotANumber
 	}
 	if hours <= 0 {
-		return 0, fmt.Errorf("längden måste vara större än noll")
+		return 0, ErrNotPositive
 	}
 	return time.Duration(math.Round(hours*60)) * time.Minute, nil
 }
+
+// The ways a typed-in length can be unreadable. They are values rather than
+// sentences because the sentence belongs to whichever language the member is
+// reading; the web layer turns each of these into one.
+var (
+	ErrNoLength    = errors.New("no length given")
+	ErrNotANumber  = errors.New("not a number")
+	ErrNotPositive = errors.New("length must be greater than zero")
+)
 
 // HoursParam renders a duration as the "langd" query parameter: hours, with a
 // dot, and no floating point dust. ParseHours reads it back exactly.
@@ -254,37 +254,6 @@ func IsPreset(r config.Resource, dur time.Duration) bool {
 		}
 	}
 	return false
-}
-
-// DurationList renders allowed durations as "1 h, 2 h, 4 h eller 8 h".
-func DurationList(ds []float64) string {
-	parts := make([]string, len(ds))
-	for i, d := range ds {
-		parts[i] = FormatDuration(durationOf(d))
-	}
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + " eller " + parts[len(parts)-1]
-	}
-}
-
-// FormatDuration renders a duration the way the house talks about it: "4 h",
-// "30 min", "1 h 30 min".
-func FormatDuration(d time.Duration) string {
-	mins := int(d.Minutes())
-	h, m := mins/60, mins%60
-	switch {
-	case h == 0:
-		return fmt.Sprintf("%d min", m)
-	case m == 0:
-		return fmt.Sprintf("%d h", h)
-	default:
-		return fmt.Sprintf("%d h %d min", h, m)
-	}
 }
 
 func durationOf(hours float64) time.Duration {

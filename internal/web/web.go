@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
-	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
@@ -40,8 +40,11 @@ type Server struct {
 	guard *auth.Guard
 	mm    *mattermost.Client
 	log   *slog.Logger
-	tpl   map[string]*template.Template
-	now   func() time.Time
+	// tpl holds one parsed set per language. The language is baked into the
+	// template functions, so a page can say {{t "key"}} and get the right
+	// words without every call site passing a language around.
+	tpl map[i18n.Lang]map[string]*template.Template
+	now func() time.Time
 
 	// members caches the bookable directory the user picker searches.
 	members memberCache
@@ -69,18 +72,22 @@ func New(cfg *config.Config, rt config.Runtime, st *store.Store, guard *auth.Gua
 	if s.assets, err = hashAssets(); err != nil {
 		return nil, err
 	}
-	s.tpl = make(map[string]*template.Template, len(pages))
-	for _, page := range pages {
-		files := make([]string, 0, len(layouts)+1)
-		for _, l := range layouts {
-			files = append(files, "templates/"+l)
+	s.tpl = make(map[i18n.Lang]map[string]*template.Template, len(i18n.Langs))
+	for _, lang := range i18n.Langs {
+		set := make(map[string]*template.Template, len(pages))
+		for _, page := range pages {
+			files := make([]string, 0, len(layouts)+1)
+			for _, l := range layouts {
+				files = append(files, "templates/"+l)
+			}
+			files = append(files, "templates/"+page)
+			t, err := template.New(page).Funcs(s.funcs(lang)).ParseFS(templateFS, files...)
+			if err != nil {
+				return nil, fmt.Errorf("parse template %s (%s): %w", page, lang, err)
+			}
+			set[page] = t
 		}
-		files = append(files, "templates/"+page)
-		t, err := template.New(page).Funcs(s.funcs()).ParseFS(templateFS, files...)
-		if err != nil {
-			return nil, fmt.Errorf("parse template %s: %w", page, err)
-		}
-		s.tpl[page] = t
+		s.tpl[lang] = set
 	}
 	return s, nil
 }
@@ -117,6 +124,19 @@ func (s *Server) asset(name string) string {
 	return "/static/" + name
 }
 
+// defaultLang is the language a visitor gets before choosing one, and the one
+// anything written to somebody who is not reading a page right now goes out in.
+func (s *Server) defaultLang() i18n.Lang {
+	lang, _ := i18n.Parse(s.cfg.Site.Language)
+	return lang
+}
+
+// lang is the language for this request: the reader's own choice, then their
+// browser's preference, then the deployment's.
+func (s *Server) lang(r *http.Request) i18n.Lang {
+	return i18n.FromRequest(r, s.defaultLang())
+}
+
 // Handler returns the router with middleware applied.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -136,6 +156,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("POST /sprak", s.handleLanguage)
 
 	mux.Handle("GET /{$}", s.member(s.handleIndex))
 	mux.Handle("GET /resurs/{id}", s.member(s.handleResource))
@@ -185,9 +206,7 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *view)) http.H
 			return
 		}
 		if !role.Admin() {
-			s.renderError(w, r, http.StatusForbidden,
-				"Bara husets administratör kommer åt den här sidan.",
-				"Logga in igen med administratörslösenordet om du behöver se alla bokningar.")
+			s.errorPage(w, r, http.StatusForbidden, "error.adminonly", "error.adminonly.how")
 			return
 		}
 		h(w, r, s.newView(r, role))
@@ -196,7 +215,13 @@ func (s *Server) admin(h func(http.ResponseWriter, *http.Request, *view)) http.H
 
 // view is the data every page shares.
 type view struct {
-	Site      config.Site
+	Site config.Site
+	// Lang is the language this page is rendered in, Other the one the switch
+	// in the top bar moves to, and Here the address to come back to after
+	// switching.
+	Lang      i18n.Lang
+	Other     i18n.Lang
+	Here      string
 	Role      auth.Role
 	Ident     auth.Identity
 	Now       time.Time
@@ -215,8 +240,12 @@ type view struct {
 }
 
 func (s *Server) newView(r *http.Request, role auth.Role) *view {
+	lang := s.lang(r)
 	return &view{
 		Site:      s.cfg.Site,
+		Lang:      lang,
+		Other:     lang.Other(),
+		Here:      r.URL.RequestURI(),
 		Role:      role,
 		Ident:     s.guard.Identity(r),
 		Now:       s.now().In(s.cfg.Location()),
@@ -235,7 +264,11 @@ func (s *Server) newView(r *http.Request, role auth.Role) *view {
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name string, v *view) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	t, ok := s.tpl[name]
+	set, ok := s.tpl[v.Lang]
+	if !ok {
+		set = s.tpl[i18n.Default]
+	}
+	t, ok := set[name]
 	if !ok {
 		s.log.Error("unknown template", "template", name)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -252,6 +285,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name
 	buf.WriteTo(w)
 }
 
+// errorPage shows one of the catalogue's error pages. Taking keys rather than
+// sentences is what keeps the last few Swedish strings out of the handlers.
+func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int, headlineKey, detailKey string) {
+	lang := s.lang(r)
+	detail := ""
+	if detailKey != "" {
+		detail = i18n.T(lang, detailKey)
+	}
+	s.renderError(w, r, status, i18n.T(lang, headlineKey), detail)
+}
+
 func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, headline, detail string) {
 	v := s.newView(r, s.guard.Role(r))
 	v.Title = headline
@@ -259,23 +303,39 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, r, status, "error.html", v)
 }
 
-func (s *Server) funcs() template.FuncMap {
+// funcs builds the template helpers for one language. Every helper that says
+// anything in words closes over the language, so the templates never pass one.
+func (s *Server) funcs(lang i18n.Lang) template.FuncMap {
+	l := string(lang)
 	return template.FuncMap{
-		"weekday":      Weekday,
-		"weekdayShort": WeekdayShort,
-		"month":        Month,
-		"monthYear":    MonthYear,
-		"dateLong":     DateLong,
-		"dateLongYear": DateLongYear,
-		"dateShort":    DateShort,
-		"clock":        Clock,
-		"isoDate":      ISODate,
-		"interval":     Interval,
-		"relativeDay":  RelativeDay,
-		"nights":       Nights,
-		"titleCase":    TitleCase,
-		"duration":     booking.FormatDuration,
-		"durationList": booking.DurationList,
+		"t":               func(key string, args ...any) string { return i18n.T(lang, key, args...) },
+		"weekday":         func(t time.Time) string { return i18n.Weekday(lang, t) },
+		"weekdayShort":    func(t time.Time) string { return i18n.WeekdayShort(lang, t) },
+		"weekdayInitials": func() []string { return i18n.WeekdayInitials(lang) },
+		"month":           func(t time.Time) string { return i18n.Month(lang, t) },
+		"monthYear":       func(t time.Time) string { return i18n.MonthYear(lang, t) },
+		"dateLong":        func(t time.Time) string { return i18n.DateLong(lang, t) },
+		"dateLongYear":    func(t time.Time) string { return i18n.DateLongYear(lang, t) },
+		"dateShort":       func(t time.Time) string { return i18n.DateShort(lang, t) },
+		"interval":        func(start, end time.Time) string { return i18n.Interval(lang, start, end) },
+		"relativeDay":     func(t, now time.Time) string { return i18n.RelativeDay(lang, t, now) },
+		"count":           func(unit string, n int) string { return i18n.Count(lang, unit, n) },
+		"plural":          func(unit string, n int) string { return i18n.Plural(lang, unit, n) },
+		"nights":          func(n int) string { return i18n.Count(lang, "night", n) },
+		"clock":           i18n.Clock,
+		"isoDate":         i18n.ISODate,
+		"titleCase":       i18n.TitleCase,
+		"duration":        i18n.Duration,
+		// The house's own words about a thing, in this language.
+		"resName":         func(r config.Resource) string { return r.NameFor(l) },
+		"resDescription":  func(r config.Resource) string { return r.DescriptionFor(l) },
+		"resLocation":     func(r config.Resource) string { return r.LocationFor(l) },
+		"resInstructions": func(r config.Resource) string { return r.InstructionsFor(l) },
+		"catName":         func(c config.Category) string { return c.NameFor(l) },
+		"catDescription":  func(c config.Category) string { return c.DescriptionFor(l) },
+		"catLinkLabel":    func(c config.Category) string { return c.LinkLabelFor(l) },
+		"siteTagline":     func(site config.Site) string { return site.TaglineFor(l) },
+		"siteFooter":      func(site config.Site) string { return site.FooterFor(l) },
 		"local": func(t time.Time) time.Time {
 			return t.In(s.cfg.Location())
 		},
@@ -346,8 +406,7 @@ func (s *Server) recoverPanic(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				s.log.Error("panic serving request", "path", r.URL.Path, "err", rec)
-				s.renderError(w, r, http.StatusInternalServerError,
-					"Något gick fel", "Försök igen, eller hör av dig till husets datorgrupp om det fortsätter.")
+				s.errorPage(w, r, http.StatusInternalServerError, "error.wentwrong", "error.wentwrong.how")
 			}
 		}()
 		next.ServeHTTP(w, r)

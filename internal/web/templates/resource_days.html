@@ -1,29 +1,29 @@
 {{define "content"}}
 {{$res := .Data.Resource}}{{$d := .Data.Days}}{{$rules := .Data.Rules}}
-<nav class="crumbs"><a href="/">Boka</a> <span aria-hidden="true">/</span> <span>{{$res.Name}}</span></nav>
+<nav class="crumbs"><a href="/">{{t "nav.book"}}</a> <span aria-hidden="true">/</span> <span>{{resName $res}}</span></nav>
 
 <header class="resource-head">
-	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{$res.Name}}</h1>
-	{{with $res.Description}}<p class="lede">{{.}}</p>{{end}}
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{resName $res}}</h1>
+	{{with resDescription $res}}<p class="lede">{{.}}</p>{{end}}
 	<ul class="facts">
-		<li><span>Längd</span><strong>{{$rules.Nights}}</strong></li>
-		<li><span>Tider</span><strong>Check {{$rules.CheckTime}}</strong></li>
-		<li><span>Max i förväg</span><strong>{{$rules.Advance}}</strong></li>
-		{{with $rules.Limit}}<li><span>Max per person</span><strong>{{.}}</strong></li>{{end}}
-		{{with $res.Location}}<li><span>Var</span><strong>{{.}}</strong></li>{{end}}
+		<li><span>{{t "rules.length"}}</span><strong>{{$rules.Nights}}</strong></li>
+		<li><span>{{t "rules.hours"}}</span><strong>{{t "rules.check" $rules.CheckTime}}</strong></li>
+		<li><span>{{t "rules.advance"}}</span><strong>{{$rules.Advance}}</strong></li>
+		{{with $rules.Limit}}<li><span>{{t "rules.limit"}}</span><strong>{{.}}</strong></li>{{end}}
+		{{with resLocation $res}}<li><span>{{t "rules.where"}}</span><strong>{{.}}</strong></li>{{end}}
 	</ul>
-	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
+	{{with resInstructions $res}}<p class="note">{{.}}</p>{{end}}
 	<p class="head-links">
-		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">Se alla kommande bokningar →</a>
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">{{t "resource.upcoming"}}</a>
 		{{with $res.InfoURL}}
-		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">Läs mer på rudbeckia.nu →</a>
+		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">{{t "resource.readmore"}}</a>
 		{{end}}
 	</p>
 </header>
 
 {{with .Data.Errors}}
 <div class="alert alert-error" role="alert">
-	<strong>Bokningen gick inte igenom</strong>
+	<strong>{{t "resource.failed"}}</strong>
 	<ul>{{range .}}<li>{{.Message}}</li>{{end}}</ul>
 </div>
 {{end}}
@@ -32,15 +32,15 @@
 	<div class="calendar-column">
 		<div class="month-head">
 			{{if $d.HasPrev}}
-			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Prev.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">← Föregående</a>
+			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Prev.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">{{t "resource.prev"}}</a>
 			{{else}}<span></span>{{end}}
 			<h2>{{titleCase (monthYear $d.Month)}}</h2>
-			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Next.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">Nästa →</a>
+			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Next.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">{{t "resource.next"}}</a>
 		</div>
 
 		<div class="calendar">
 			<div class="cal-weekdays" aria-hidden="true">
-				<span>mån</span><span>tis</span><span>ons</span><span>tor</span><span>fre</span><span>lör</span><span>sön</span>
+				{{range weekdayInitials}}<span>{{.}}</span>{{end}}
 			</div>
 			<div class="cal-grid">
 				{{range $d.Cells}}
@@ -49,44 +49,44 @@
 					{{else if .Available}}
 						<a class="cal-day is-free"
 						   href="/resurs/{{$res.ID}}?manad={{$d.Month.Format "2006-01"}}&amp;fran={{isoDate .Date}}&amp;till={{isoDate (.Date.AddDate 0 0 1)}}#boka"
-						   title="Ledigt {{dateLong .Date}}">{{.Label}}</a>
+						   title="{{t "resource.freeon" (dateLong .Date)}}">{{.Label}}</a>
 					{{else if .Taken}}
 						<span class="cal-day is-taken{{if .Mine}} is-mine{{end}}"
-						      title="Bokat av {{.Booking.Name}}">{{.Label}}</span>
+						      title="{{t "resource.takenby" .Booking.Name}}">{{.Label}}</span>
 					{{else}}
-						<span class="cal-day is-past" title="{{if .Past}}Har passerat{{else}}För långt fram i tiden{{end}}">{{.Label}}</span>
+						<span class="cal-day is-past" title="{{if .Past}}{{t "slot.past"}}{{else}}{{t "slot.far"}}{{end}}">{{.Label}}</span>
 					{{end}}
 				{{end}}
 			</div>
 			<p class="cal-legend">
-				<span class="key key-free"></span> ledigt
-				<span class="key key-taken"></span> bokat
-				<span class="key key-mine"></span> din bokning
+				<span class="key key-free"></span> {{t "resource.legend.free"}}
+				<span class="key key-taken"></span> {{t "resource.legend.taken"}}
+				<span class="key key-mine"></span> {{t "resource.legend.mine"}}
 			</p>
 		</div>
 	</div>
 
 	<div class="form-column">
-		<h2>Välj datum</h2>
-		<p class="muted small">Klicka på en ledig dag i kalendern, eller fyll i datumen här.</p>
+		<h2>{{t "resource.pickdate"}}</h2>
+		<p class="muted small">{{t "resource.pickdatehint"}}</p>
 		<form method="get" action="/resurs/{{$res.ID}}" class="range-form stacked">
 			<input type="hidden" name="manad" value="{{$d.Month.Format "2006-01"}}">
 			<div class="field">
-				<label for="fran">Incheckning <small>{{$res.Rules.CheckIn}}</small></label>
+				<label for="fran">{{t "resource.checkin"}} <small>{{$res.Rules.CheckIn}}</small></label>
 				<input id="fran" name="fran" type="date" value="{{$d.From}}" required>
 			</div>
 			<div class="field">
-				<label for="till">Utcheckning <small>{{$res.Rules.CheckOut}}</small></label>
+				<label for="till">{{t "resource.checkout"}} <small>{{$res.Rules.CheckOut}}</small></label>
 				<input id="till" name="till" type="date" value="{{$d.To}}" required>
 			</div>
-			<button type="submit" class="button">Kontrollera</button>
+			<button type="submit" class="button">{{t "resource.check"}}</button>
 		</form>
 
 		{{with $d.RangeError}}<p class="alert alert-warn">{{.}}</p>{{end}}
 
 		{{if $d.RangeOK}}
 		<p class="summary">
-			<strong>{{$res.Name}}</strong><br>
+			<strong>{{resName $res}}</strong><br>
 			{{titleCase (dateLong (local $d.Start))}} {{clock (local $d.Start)}}
 			– {{dateLong (local $d.End)}} {{clock (local $d.End)}}
 			({{nights $d.Nights}})

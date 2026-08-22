@@ -9,6 +9,7 @@ import (
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -108,7 +109,7 @@ func TestSeedLeavesRoomToBook(t *testing.T) {
 		if err != nil {
 			t.Fatalf("in range: %v", err)
 		}
-		view := booking.BuildDay(res, date, 2*time.Hour, existing, now, loc, "")
+		view := booking.BuildDay(res, date, 2*time.Hour, existing, now, loc, "", i18n.SV)
 		if view.FreeCount == 0 {
 			t.Errorf("day +%d has no free two-hour slot; the demo looks fully booked", day)
 		}

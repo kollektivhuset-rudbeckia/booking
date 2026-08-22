@@ -36,9 +36,10 @@ const fakeBotID = "bot0000000000000000000000"
 // fakeDirectory is the cast the tests book as. The addresses use the reserved
 // example domains, and the ids are as opaque as the real ones.
 var fakeDirectory = []mattermost.User{
-	{ID: "u-anna", Username: "anna.andersson", FirstName: "Anna", LastName: "Andersson", Email: "anna@example.se"},
-	{ID: "u-bo", Username: "bo.bengtsson", FirstName: "Bo", LastName: "Bengtsson", Email: "bo@example.se"},
-	{ID: "u-cecilia", Username: "cecilia.dahl", FirstName: "Cecilia", LastName: "Dahl", Email: "cecilia@example.se"},
+	{ID: "u-anna", Username: "anna.andersson", FirstName: "Anna", LastName: "Andersson", Email: "anna@example.se", Locale: "sv"},
+	{ID: "u-bo", Username: "bo.bengtsson", FirstName: "Bo", LastName: "Bengtsson", Email: "bo@example.se", Locale: "en"},
+	// A locale the site has no words for: it must fall back, not blank out.
+	{ID: "u-cecilia", Username: "cecilia.dahl", FirstName: "Cecilia", LastName: "Dahl", Email: "cecilia@example.se", Locale: "de"},
 	{ID: "u-mikael", Username: "mikael.ostberg", FirstName: "Mikael", LastName: "Östberg", Email: "mikael@example.se"},
 	// A second Anna Andersson: two people can share a name, and the form has
 	// to say so rather than guess.

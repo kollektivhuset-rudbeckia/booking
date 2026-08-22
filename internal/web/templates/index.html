@@ -1,22 +1,22 @@
 {{define "content"}}
 <div class="hero">
-	<h1>Boka husets gemensamma resurser</h1>
-	<p class="lede">Cyklar, lokaler och gästrum – välj det du vill boka så ser du direkt vad som är ledigt.</p>
+	<h1>{{t "index.title"}}</h1>
+	<p class="lede">{{t "index.lede"}}</p>
 </div>
 
 {{if .Data.Mine}}
 <section class="panel">
 	<div class="panel-head">
-		<h2>Dina kommande bokningar</h2>
-		<a class="quiet-link" href="/mina">Visa alla</a>
+		<h2>{{t "index.mine"}}</h2>
+		<a class="quiet-link" href="/mina">{{t "index.showall"}}</a>
 	</div>
 	<ul class="booking-list">
 		{{range .Data.Mine}}
 		<li>
 			<a href="/bokning/{{.Booking.ID}}">
-				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</span>
+				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{resName .Resource}}</span>
 				<strong>{{titleCase (interval .Start .End)}}</strong>
-				{{if .Ongoing}}<span class="badge badge-live">pågår nu</span>{{end}}
+				{{if .Ongoing}}<span class="badge badge-live">{{t "mine.ongoing"}}</span>{{end}}
 			</a>
 		</li>
 		{{end}}
@@ -26,11 +26,11 @@
 
 {{range .Data.Groups}}
 <section class="group">
-	<h2 class="group-title">{{with .Category.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{.Category.Name}}</h2>
+	<h2 class="group-title">{{with .Category.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{with catName .Category}}{{.}}{{else}}{{t "index.other"}}{{end}}</h2>
 	{{if or .Category.Description .Category.Link}}
 	<p class="muted group-desc">
-		{{.Category.Description}}
-		{{if .Category.Link}}<a href="{{.Category.Link}}" target="_blank" rel="noopener">{{.Category.LinkLabel}}</a>{{end}}
+		{{catDescription .Category}}
+		{{if .Category.Link}}<a href="{{.Category.Link}}" target="_blank" rel="noopener">{{catLinkLabel .Category}}</a>{{end}}
 	</p>
 	{{end}}
 	<div class="cards">
@@ -39,30 +39,30 @@
 			<a class="card-link" href="/resurs/{{.Resource.ID}}">
 				<header class="card-head">
 					{{with .Resource.Emoji}}<span class="card-emoji" aria-hidden="true">{{.}}</span>{{end}}
-					<h3>{{.Resource.Name}}</h3>
+					<h3>{{resName .Resource}}</h3>
 				</header>
-				{{with .Resource.Description}}<p class="card-desc">{{.}}</p>{{end}}
+				{{with resDescription .Resource}}<p class="card-desc">{{.}}</p>{{end}}
 				<dl class="card-facts">
 					{{if eq .Rules.Mode "hours"}}
-					<div><dt>Längd</dt><dd>{{.Rules.Durations}}{{with .Rules.Custom}}<br><span class="muted">eller egen: {{.}}</span>{{end}}</dd></div>
-					<div><dt>Tider</dt><dd>{{.Rules.Window}}</dd></div>
+					<div><dt>{{t "rules.length"}}</dt><dd>{{.Rules.Durations}}{{with .Rules.Custom}}<br><span class="muted">{{t "or"}} {{.}}</span>{{end}}</dd></div>
+					<div><dt>{{t "rules.hours"}}</dt><dd>{{.Rules.Window}}</dd></div>
 					{{else}}
-					<div><dt>Längd</dt><dd>{{.Rules.Nights}}</dd></div>
-					<div><dt>Tider</dt><dd>{{.Rules.CheckTime}}</dd></div>
+					<div><dt>{{t "rules.length"}}</dt><dd>{{.Rules.Nights}}</dd></div>
+					<div><dt>{{t "rules.hours"}}</dt><dd>{{.Rules.CheckTime}}</dd></div>
 					{{end}}
-					{{with .Resource.Location}}<div><dt>Var</dt><dd>{{.}}</dd></div>{{end}}
+					{{with resLocation .Resource}}<div><dt>{{t "rules.where"}}</dt><dd>{{.}}</dd></div>{{end}}
 				</dl>
 				<footer class="card-foot">
 					{{if .NextFree}}
-						<span class="badge badge-free">Ledigt {{relativeDay (local .NextFree) $.Now}}{{if eq .Rules.Mode "hours"}} {{clock (local .NextFree)}}{{end}}</span>
+						<span class="badge badge-free">{{t "index.free" (relativeDay (local .NextFree) $.Now)}}{{if eq .Rules.Mode "hours"}} {{clock (local .NextFree)}}{{end}}</span>
 					{{else}}
-						<span class="badge badge-busy">Inget ledigt just nu</span>
+						<span class="badge badge-busy">{{t "index.nofree"}}</span>
 					{{end}}
-					<span class="card-cta">Boka →</span>
+					<span class="card-cta">{{t "index.cta"}}</span>
 				</footer>
 			</a>
 			<p class="card-aside">
-				<a class="quiet-link" href="/resurs/{{.Resource.ID}}/bokningar">Kommande bokningar</a>
+				<a class="quiet-link" href="/resurs/{{.Resource.ID}}/bokningar">{{t "index.upcoming"}}</a>
 			</p>
 		</article>
 		{{end}}

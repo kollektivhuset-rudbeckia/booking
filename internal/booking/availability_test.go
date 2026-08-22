@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -49,7 +50,7 @@ func TestBuildDaySlotGrid(t *testing.T) {
 	now := at(loc, "2026-05-01 08:00")
 	day := at(loc, "2026-05-02 00:00")
 
-	view := BuildDay(bike(), day, 2*time.Hour, nil, now, loc, "")
+	view := BuildDay(bike(), day, 2*time.Hour, nil, now, loc, "", i18n.SV)
 
 	// 06:00 to 22:00 with a 2 h booking on a 30 min grid: last start is 20:00.
 	if got, want := len(view.Slots), 29; got != want {
@@ -83,7 +84,7 @@ func TestBuildDayRespectsBuffer(t *testing.T) {
 		MMUsername: "anna.andersson",
 	}}
 
-	view := BuildDay(bike(), day, time.Hour, existing, now, loc, "")
+	view := BuildDay(bike(), day, time.Hour, existing, now, loc, "", i18n.SV)
 
 	free := map[string]bool{}
 	for _, s := range view.Slots {
@@ -113,7 +114,7 @@ func TestBuildDayMarksOwnBooking(t *testing.T) {
 		Status:     store.StatusConfirmed,
 		MMUsername: "Anna.Andersson",
 	}}
-	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, existing, now, loc, "anna.andersson")
+	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, existing, now, loc, "anna.andersson", i18n.SV)
 	for _, s := range view.Slots {
 		if clockOf(s.Start.In(loc)) == "10:00" && s.Reason != "Din bokning" {
 			t.Errorf("own booking reason = %q, want %q (case-insensitive match)", s.Reason, "Din bokning")
@@ -127,7 +128,7 @@ func TestBuildDayMarksOwnBooking(t *testing.T) {
 func TestBuildDayHidesPastAndTooDistant(t *testing.T) {
 	loc := stockholm(t)
 	now := at(loc, "2026-05-02 12:20")
-	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, nil, now, loc, "")
+	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, nil, now, loc, "", i18n.SV)
 
 	for _, s := range view.Slots {
 		clock := clockOf(s.Start.In(loc))
@@ -140,7 +141,7 @@ func TestBuildDayHidesPastAndTooDistant(t *testing.T) {
 	}
 
 	// A day past the horizon offers nothing.
-	far := BuildDay(bike(), at(loc, "2026-07-01 00:00"), time.Hour, nil, now, loc, "")
+	far := BuildDay(bike(), at(loc, "2026-07-01 00:00"), time.Hour, nil, now, loc, "", i18n.SV)
 	if far.FreeCount != 0 {
 		t.Errorf("free slots %d beyond the 30 day horizon, want 0", far.FreeCount)
 	}
@@ -249,30 +250,6 @@ func TestDayRangeAcrossDSTChange(t *testing.T) {
 	}
 }
 
-func TestFormatDuration(t *testing.T) {
-	cases := map[time.Duration]string{
-		30 * time.Minute: "30 min",
-		time.Hour:        "1 h",
-		4 * time.Hour:    "4 h",
-		90 * time.Minute: "1 h 30 min",
-		8 * time.Hour:    "8 h",
-	}
-	for in, want := range cases {
-		if got := FormatDuration(in); got != want {
-			t.Errorf("FormatDuration(%v) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestDurationList(t *testing.T) {
-	if got, want := DurationList([]float64{1, 2, 4, 8}), "1 h, 2 h, 4 h eller 8 h"; got != want {
-		t.Errorf("DurationList = %q, want %q", got, want)
-	}
-	if got, want := DurationList([]float64{2}), "2 h"; got != want {
-		t.Errorf("DurationList = %q, want %q", got, want)
-	}
-}
-
 // Opening hours follow the wall clock. Sweden changes the clocks at 02:00/03:00,
 // so building the window by adding six hours to midnight lands on 07:00 in
 // spring and 05:00 in autumn — the resource would look like it opened at the
@@ -313,7 +290,7 @@ func TestFullDayLengthFitsOnDSTDays(t *testing.T) {
 		// Stand a few days before each one, so nothing falls outside the
 		// resource's booking horizon.
 		now := at(loc, day+" 00:00").AddDate(0, 0, -5)
-		view := BuildDay(res, at(loc, day+" 00:00"), 16*time.Hour, nil, now, loc, "")
+		view := BuildDay(res, at(loc, day+" 00:00"), 16*time.Hour, nil, now, loc, "", i18n.SV)
 		if view.FreeCount != 1 {
 			t.Errorf("%s: %d starts for a 16 h booking, want exactly 1", day, view.FreeCount)
 			continue

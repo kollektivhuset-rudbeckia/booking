@@ -1,27 +1,26 @@
 {{define "content"}}
 <div class="narrow">
-	<h1>Mina bokningar</h1>
-	{{if .Data.Cancelled}}<p class="alert alert-ok">Bokningen är avbokad.</p>{{end}}
+	<h1>{{t "mine.title"}}</h1>
+	{{if .Data.Cancelled}}<p class="alert alert-ok">{{t "mine.cancelled"}}</p>{{end}}
 
 	{{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
 	{{if not .Data.Member}}
-	<p class="muted">Vi känner igen dig på ditt Mattermost-konto. Sök på namn eller
-		användarnamn så visar vi bokningarna.</p>
+	<p class="muted">{{t "mine.lede"}}</p>
 	{{end}}
 	<form method="get" action="/mina" class="range-form">
 		<div class="field">
-			<label for="medlem">Vems bokningar?</label>
+			<label for="medlem">{{t "mine.whose"}}</label>
 			<div class="member-field">
 				<span class="member-at" aria-hidden="true">@</span>
 				<input id="medlem" name="medlem" type="text" value="{{.Data.Typed}}"
-				       placeholder="Anna Andersson eller anna.andersson" autocomplete="off"
+				       placeholder="{{t "form.who.placeholder"}}" autocomplete="off"
 				       spellcheck="false" autocapitalize="none" aria-controls="mina-lista"
 				       data-member-search required>
 				<ul class="combo-list" id="mina-lista" role="listbox"
-				    aria-label="Personer i huset" hidden></ul>
+				    aria-label="{{t "form.who.list"}}" hidden></ul>
 			</div>
 		</div>
-		<button type="submit" class="button">Visa</button>
+		<button type="submit" class="button">{{t "show"}}</button>
 	</form>
 
 	{{if .Data.Rows}}
@@ -29,17 +28,17 @@
 		{{range .Data.Rows}}
 		<li>
 			<a href="/bokning/{{.Booking.ID}}">
-				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</span>
+				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{resName .Resource}}</span>
 				<strong>{{titleCase (interval .Start .End)}}</strong>
 				<small>{{if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}
-					{{if .Ongoing}}· <span class="badge badge-live">pågår nu</span>{{else if not .Upcoming}}· avslutad{{end}}</small>
+					{{if .Ongoing}}· <span class="badge badge-live">{{t "mine.ongoing"}}</span>{{else if not .Upcoming}}· {{t "mine.finished"}}{{end}}</small>
 			</a>
 		</li>
 		{{end}}
 	</ul>
 	{{else if .Data.Member}}
-	<p class="empty">Inga bokningar för {{with .Data.Name}}{{.}} (@{{$.Data.Member}}){{else}}@{{.Data.Member}}{{end}}
-		just nu. <a href="/">Boka något</a>?</p>
+	<p class="empty">{{t "mine.none" (printf "%s" (or .Data.Name (printf "@%s" .Data.Member)))}}
+		<a href="/">{{t "mine.booksomething"}}</a>?</p>
 	{{end}}
 </div>
 {{end}}

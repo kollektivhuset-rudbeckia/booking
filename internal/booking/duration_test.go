@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -99,12 +100,12 @@ func TestFormatHoursInputUsesSwedishComma(t *testing.T) {
 func TestCheckDurationWithoutCustomAllowsOnlyPresets(t *testing.T) {
 	r := bike() // durations 1, 2, 4, 8; custom off
 	for _, ok := range []time.Duration{time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour} {
-		if err := CheckDuration(r, ok); err != nil {
+		if err := CheckDuration(r, ok, i18n.SV); err != nil {
 			t.Errorf("%v should be allowed: %s", ok, err.Message)
 		}
 	}
 	for _, bad := range []time.Duration{90 * time.Minute, 3 * time.Hour, 30 * time.Minute} {
-		err := CheckDuration(r, bad)
+		err := CheckDuration(r, bad, i18n.SV)
 		if err == nil {
 			t.Errorf("%v should be refused when custom lengths are off", bad)
 			continue
@@ -122,7 +123,7 @@ func TestCheckDurationWithCustomAllowsAnythingOnTheGrid(t *testing.T) {
 		30 * time.Minute, time.Hour, 90 * time.Minute, 3 * time.Hour,
 		5*time.Hour + 30*time.Minute, 10 * time.Hour,
 	} {
-		if err := CheckDuration(r, ok); err != nil {
+		if err := CheckDuration(r, ok, i18n.SV); err != nil {
 			t.Errorf("%v should be allowed: %s", ok, err.Message)
 		}
 	}
@@ -137,7 +138,7 @@ func TestCheckDurationWithCustomAllowsAnythingOnTheGrid(t *testing.T) {
 		{2*time.Hour + 10*time.Minute, "jämnt ut"},
 	}
 	for _, c := range cases {
-		err := CheckDuration(r, c.dur)
+		err := CheckDuration(r, c.dur, i18n.SV)
 		if err == nil {
 			t.Errorf("%v should be refused", c.dur)
 			continue
@@ -150,7 +151,7 @@ func TestCheckDurationWithCustomAllowsAnythingOnTheGrid(t *testing.T) {
 
 // An off-grid length should suggest the nearest lengths that would work.
 func TestCheckDurationSuggestsNeighbours(t *testing.T) {
-	err := CheckDuration(flexibleBike(), 45*time.Minute)
+	err := CheckDuration(flexibleBike(), 45*time.Minute, i18n.SV)
 	if err == nil {
 		t.Fatal("45 min is off a 30 min grid and should be refused")
 	}
@@ -164,10 +165,10 @@ func TestCheckDurationSuggestsNeighbours(t *testing.T) {
 func TestPresetsBeatCustomBounds(t *testing.T) {
 	r := flexibleBike()
 	r.Rules.MaxDurationMinutes = 60
-	if err := CheckDuration(r, 8*time.Hour); err != nil {
+	if err := CheckDuration(r, 8*time.Hour, i18n.SV); err != nil {
 		t.Errorf("the 8 h preset should still be bookable: %s", err.Message)
 	}
-	if err := CheckDuration(r, 3*time.Hour); err == nil {
+	if err := CheckDuration(r, 3*time.Hour, i18n.SV); err == nil {
 		t.Error("3 h is not a preset and is over the custom limit; it should be refused")
 	}
 }
@@ -192,7 +193,7 @@ func TestValidateAcceptsACustomLength(t *testing.T) {
 		Start:    at(loc, "2026-05-02 10:00"),
 		End:      at(loc, "2026-05-02 13:30"), // 3.5 h, not a preset
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if len(errs) != 0 {
 		t.Errorf("a 3.5 h booking should be accepted: %s", messages(errs))
 	}
@@ -203,7 +204,7 @@ func TestValidateAcceptsACustomLength(t *testing.T) {
 		Start:    at(loc, "2026-05-03 10:00"),
 		End:      at(loc, "2026-05-03 13:30"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if len(errs) == 0 {
 		t.Error("3.5 h should be refused when custom lengths are off")
 	}
@@ -220,7 +221,7 @@ func TestCustomLengthStillRespectsOpeningHours(t *testing.T) {
 		Start:    at(loc, "2026-05-02 19:00"),
 		End:      at(loc, "2026-05-02 23:30"), // 4.5 h, runs past closing
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if !strings.Contains(messages(errs), "kan bokas mellan") {
 		t.Errorf("expected an opening-hours complaint, got %q", messages(errs))
 	}
@@ -233,15 +234,15 @@ func TestFullDayLength(t *testing.T) {
 	res := flexibleBike() // open 06:00–22:00
 	res.Rules.MaxDurationMinutes = 16 * 60
 
-	if err := CheckDuration(res, 16*time.Hour); err != nil {
+	if err := CheckDuration(res, 16*time.Hour, i18n.SV); err != nil {
 		t.Fatalf("16 h should be allowed: %s", err.Message)
 	}
-	if err := CheckDuration(res, 16*time.Hour+30*time.Minute); err == nil {
+	if err := CheckDuration(res, 16*time.Hour+30*time.Minute, i18n.SV); err == nil {
 		t.Error("16 h 30 min is over the limit and should be refused")
 	}
 
 	now := at(loc, "2026-05-01 08:00")
-	view := BuildDay(res, at(loc, "2026-05-02 00:00"), 16*time.Hour, nil, now, loc, "")
+	view := BuildDay(res, at(loc, "2026-05-02 00:00"), 16*time.Hour, nil, now, loc, "", i18n.SV)
 	if len(view.Slots) != 1 {
 		t.Fatalf("a 16 h booking has %d possible starts, want exactly 1", len(view.Slots))
 	}
@@ -269,7 +270,7 @@ func TestFullDayBookingValidates(t *testing.T) {
 		Start:    at(loc, "2026-05-02 06:00"),
 		End:      at(loc, "2026-05-02 22:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, at(loc, "2026-05-01 08:00"), loc)
+	}, at(loc, "2026-05-01 08:00"), loc, i18n.SV)
 	if len(errs) != 0 {
 		t.Errorf("a full-day booking should be accepted: %s", messages(errs))
 	}
@@ -293,7 +294,7 @@ func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
 		End:      at(loc, "2026-05-02 22:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
 	}
-	_, _, errs := Validate(context.Background(), st, full, now, loc)
+	_, _, errs := Validate(context.Background(), st, full, now, loc, i18n.SV)
 	if len(errs) != 0 {
 		t.Fatalf("a 16 h booking should sit exactly on the 16 h allowance: %s", messages(errs))
 	}
@@ -313,7 +314,7 @@ func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 11:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if !strings.Contains(messages(errs), "gränsen är") {
 		t.Errorf("a second booking should hit the allowance, got %q", messages(errs))
 	}

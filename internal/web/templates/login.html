@@ -4,23 +4,20 @@
 		<img class="auth-mark" src="/static/rudbeckia.png" alt=""
 		     width="64" height="64" decoding="async">
 		<h1>{{.Site.Title}}</h1>
-		<p class="muted">{{if .Site.Tagline}}{{.Site.Tagline}}{{else}}Boka husets gemensamma cyklar och lokaler.{{end}}</p>
+		<p class="muted">{{with siteTagline .Site}}{{.}}{{else}}{{t "login.lede"}}{{end}}</p>
 		{{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
 		<form method="post" action="/login" class="stack">
 			<input type="hidden" name="next" value="{{.Data.Next}}">
-			<label for="password">Husets lösenord</label>
+			<label for="password">{{t "login.password"}}</label>
 			<input id="password" name="password" type="password" autocomplete="current-password"
 			       required autofocus placeholder="••••••••"
 			       {{if .Demo}}value="{{.DemoPass}}"{{end}}>
-			<button type="submit" class="button primary">Logga in</button>
+			<button type="submit" class="button primary">{{t "login.submit"}}</button>
 		</form>
 		{{if .Demo}}
-		<p class="muted small">
-			Demolösenordet är redan ifyllt. Vill du se allas bokningar, logga in
-			med <code>{{.DemoAdmin}}</code> i stället.
-		</p>
+		<p class="muted small">{{t "login.demo" .DemoAdmin}}</p>
 		{{else}}
-		<p class="muted small">Lösenordet får du av styrelsen eller i husets Mattermost.</p>
+		<p class="muted small">{{t "login.where"}}</p>
 		{{end}}
 	</div>
 </div>

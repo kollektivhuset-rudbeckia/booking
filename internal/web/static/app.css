@@ -218,6 +218,8 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
 	border-radius: var(--radius-sm); padding: .35rem .45rem; cursor: pointer;
 	display: flex; box-shadow: var(--emboss);
 }
+.lang-button { padding: .35rem .45rem; align-items: center; }
+.flag { display: block; border-radius: 2px; }
 .icon-button:hover { color: var(--text); }
 .icon-moon { display: none; }
 :root[data-theme="dark"] .icon-sun { display: none; }

@@ -5,42 +5,66 @@
 
 site:
   title: Rudbeckia bokning
+  # Språket en besökare möts av innan hen väljer själv, och det språk som
+  # används när något skrivs till någon vi inte kan fråga. "sv" eller "en".
+  # Var och en kan byta med flaggan uppe till höger, och valet minns i ett år.
+  language: sv
   tagline: Kollektivhuset Rudbeckia
+  tagline_en: Rudbeckia housing co-operative
   house_name: Kollektivhuset Rudbeckia
   timezone: Europe/Stockholm
   home_url: https://rudbeckia.nu
   support_url: https://rudbeckia.nu/kontakt/
   footer_note: Kollektivhuset Rudbeckia · Rosendal, Uppsala
+  footer_note_en: Rudbeckia housing co-operative · Rosendal, Uppsala
 
 categories:
+  # Allt en medlem läser finns i två språk: skriv det svenska som vanligt och
+  # lägg till en _en-rad bredvid. Utelämnar du den visas svenskan även på den
+  # engelska sidan — bättre en halv översättning än ett tomrum.
   - id: cyklar
     name: Cyklar
+    name_en: Bikes
     emoji: 🚲
     description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
+    description_en: The house's shared bikes. Please charge the battery after your turn.
     link: https://chat.rudbeckia.nu/rudbeckia/channels/cykelpoolen
     link_text: "#cykelpoolen i Mattermost"
+    link_text_en: "#cykelpoolen in Mattermost"
   # - id: gastrum
   #   name: Gästrum
+  #   name_en: Guest rooms
   #   emoji: 🛏️
   #   description: Tre gästrum för dina besökare. Du städar efter dig.
+  #   description_en: Three guest rooms for your visitors. You clean up after yourself.
   # - id: lokaler
   #   name: Lokaler
+  #   name_en: Rooms
   #   emoji: 🏠
   #   description: Gemensamma utrymmen som går att boka för fest, möte eller projekt.
+  #   description_en: Shared spaces to book for a party, a meeting or a project.
 
 resources:
   # ---------------------------------------------------------------- Cyklar --
   - id: ellastcykel
     category: cyklar
     name: Ellastcykeln
+    name_en: The electric cargo bike
     emoji: 🚲
     description: Elektrisk lastcykel med plats för barn eller storhandling.
+    description_en: Electric cargo bike with room for children or a big shop.
     location: Cykelrummet på markplan
+    location_en: The bike room on the ground floor
     instructions: >-
       Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
       batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
       klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
       Meddela i #cykelpoolen i Mattermost om något gått sönder.
+    instructions_en: >-
+      The keys hang on the shelf in the cleaning room next to the lift, together
+      with the batteries. Put the bike back in the bike room on the ground floor
+      when you are done, and leave the key and the battery charging in the
+      cleaning room. Say so in #cykelpoolen in Mattermost if something broke.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
@@ -63,14 +87,22 @@ resources:
   - id: elcykel
     category: cyklar
     name: Elcykeln
+    name_en: The electric bike
     emoji: ⚡
     description: Vanlig elcykel för snabba ärenden och pendling.
+    description_en: An ordinary electric bike, for quick errands and commuting.
     location: Cykelrummet på markplan
+    location_en: The bike room on the ground floor
     instructions: >-
       Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
       batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
       klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
       Meddela i #cykelpoolen i Mattermost om något gått sönder.
+    instructions_en: >-
+      The keys hang on the shelf in the cleaning room next to the lift, together
+      with the batteries. Put the bike back in the bike room on the ground floor
+      when you are done, and leave the key and the battery charging in the
+      cleaning room. Say so in #cykelpoolen in Mattermost if something broke.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours

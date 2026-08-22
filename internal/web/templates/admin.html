@@ -1,97 +1,97 @@
 {{define "content"}}
 {{$f := .Data.Filter}}
 <header class="resource-head">
-	<h1>Alla bokningar</h1>
-	<p class="lede">Hela husets bokningar, med filter och export.</p>
+	<h1>{{t "admin.title"}}</h1>
+	<p class="lede">{{t "admin.lede"}}</p>
 </header>
 
 <div class="stats">
-	<div class="stat"><strong>{{.Data.Stats.Upcoming}}</strong><span>kommande</span></div>
-	<div class="stat"><strong>{{.Data.Stats.Next30}}</strong><span>inom 30 dagar</span></div>
-	<div class="stat"><strong>{{.Data.Stats.Total}}</strong><span>totalt</span></div>
-	<div class="stat"><strong>{{.Data.Stats.Cancelled}}</strong><span>avbokade</span></div>
+	<div class="stat"><strong>{{.Data.Stats.Upcoming}}</strong><span>{{t "admin.upcoming"}}</span></div>
+	<div class="stat"><strong>{{.Data.Stats.Next30}}</strong><span>{{t "admin.next30"}}</span></div>
+	<div class="stat"><strong>{{.Data.Stats.Total}}</strong><span>{{t "admin.total"}}</span></div>
+	<div class="stat"><strong>{{.Data.Stats.Cancelled}}</strong><span>{{t "admin.cancelled"}}</span></div>
 </div>
 
 <section class="panel">
-	<h2 class="visually-hidden">Filter</h2>
+	<h2 class="visually-hidden">{{t "admin.filter"}}</h2>
 	<form method="get" action="/admin" class="filter-form">
 		<div class="field">
-			<label for="resurs">Resurs</label>
+			<label for="resurs">{{t "admin.resource"}}</label>
 			<select id="resurs" name="resurs">
-				<option value="">Alla</option>
+				<option value="">{{t "all"}}</option>
 				{{range .Data.Resources}}
 				<option value="{{.ID}}" {{if eq $f.Resource .ID}}selected{{end}}>{{.Name}}</option>
 				{{end}}
 			</select>
 		</div>
 		<div class="field">
-			<label for="period">Period</label>
+			<label for="period">{{t "admin.period"}}</label>
 			<select id="period" name="period">
-				<option value="upcoming" {{if eq $f.Scope "upcoming"}}selected{{end}}>Kommande</option>
-				<option value="past" {{if eq $f.Scope "past"}}selected{{end}}>Passerade</option>
-				<option value="all" {{if eq $f.Scope "all"}}selected{{end}}>Alla</option>
+				<option value="upcoming" {{if eq $f.Scope "upcoming"}}selected{{end}}>{{t "admin.coming"}}</option>
+				<option value="past" {{if eq $f.Scope "past"}}selected{{end}}>{{t "admin.passed"}}</option>
+				<option value="all" {{if eq $f.Scope "all"}}selected{{end}}>{{t "all"}}</option>
 			</select>
 		</div>
 		<div class="field">
-			<label for="status">Status</label>
+			<label for="status">{{t "admin.status"}}</label>
 			<select id="status" name="status">
-				<option value="">Alla</option>
-				<option value="confirmed" {{if eq $f.Status "confirmed"}}selected{{end}}>Bekräftade</option>
-				<option value="cancelled" {{if eq $f.Status "cancelled"}}selected{{end}}>Avbokade</option>
+				<option value="">{{t "all"}}</option>
+				<option value="confirmed" {{if eq $f.Status "confirmed"}}selected{{end}}>{{t "admin.confirmed"}}</option>
+				<option value="cancelled" {{if eq $f.Status "cancelled"}}selected{{end}}>{{t "admin.cancelledfilter"}}</option>
 			</select>
 		</div>
 		<div class="field">
-			<label for="fran">Från</label>
+			<label for="fran">{{t "admin.from"}}</label>
 			<input id="fran" name="fran" type="date" value="{{$f.From}}">
 		</div>
 		<div class="field">
-			<label for="till">Till</label>
+			<label for="till">{{t "admin.to"}}</label>
 			<input id="till" name="till" type="date" value="{{$f.To}}">
 		</div>
 		<div class="field grow">
-			<label for="sok">Sök</label>
-			<input id="sok" name="sok" type="search" value="{{$f.Query}}" placeholder="namn, e-post, lägenhet">
+			<label for="sok">{{t "admin.search"}}</label>
+			<input id="sok" name="sok" type="search" value="{{$f.Query}}" placeholder="{{t "admin.searchhint"}}">
 		</div>
 		<div class="filter-actions">
-			<button type="submit" class="button">Filtrera</button>
-			<a class="button ghost" href="/admin">Rensa</a>
-			<a class="button ghost" href="{{.Data.ExportURL}}">Exportera CSV</a>
+			<button type="submit" class="button">{{t "admin.apply"}}</button>
+			<a class="button ghost" href="/admin">{{t "admin.clear"}}</a>
+			<a class="button ghost" href="{{.Data.ExportURL}}">{{t "admin.export"}}</a>
 		</div>
 	</form>
 </section>
 
 <section class="panel">
 	<div class="panel-head">
-		<h2>{{len .Data.Rows}} bokningar</h2>
+		<h2>{{count "booking" (len .Data.Rows)}}</h2>
 	</div>
 	{{if .Data.Rows}}
 	<div class="table-wrap">
 		<table class="table">
 			<thead>
 				<tr>
-					<th>Resurs</th><th>När</th><th>Längd</th><th>Vem</th><th>Kontakt</th><th>Status</th><th></th>
+					<th>{{t "admin.resource"}}</th><th>{{t "admin.when"}}</th><th>{{t "admin.length"}}</th><th>{{t "admin.whom"}}</th><th>{{t "admin.contact"}}</th><th>{{t "admin.status"}}</th><th></th>
 				</tr>
 			</thead>
 			<tbody>
 				{{range .Data.Rows}}
 				<tr {{if eq .Booking.Status "cancelled"}}class="is-cancelled"{{end}}>
-					<td>{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</td>
+					<td>{{with .Resource.Emoji}}{{.}} {{end}}{{resName .Resource}}</td>
 					<td>
 						<a href="/bokning/{{.Booking.ID}}">{{isoDate .Start}} {{clock .Start}}</a>
 						<small class="muted">–{{if ne (isoDate .Start) (isoDate .End)}} {{dateShort .End}}{{end}} {{clock .End}}</small>
 					</td>
 					<td>{{if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}</td>
-					<td>{{.Booking.Name}}{{if .Booking.Apartment}}<small class="muted"> lgh {{.Booking.Apartment}}</small>{{end}}</td>
+					<td>{{.Booking.Name}}{{if .Booking.Apartment}}<small class="muted"> {{t "admin.apartmentShort" .Booking.Apartment}}</small>{{end}}</td>
 					<td>{{with .Booking.MMUsername}}<strong>@{{.}}</strong>{{else}}<span class="muted">–</span>{{end}}
 						{{with .Booking.Email}}<small class="muted"> {{.}}</small>{{end}}
 						{{with .Booking.Phone}}<small class="muted"> {{.}}</small>{{end}}</td>
-					<td>{{if eq .Booking.Status "confirmed"}}<span class="badge badge-free">bekräftad</span>{{else}}<span class="badge badge-busy">avbokad</span>{{end}}</td>
+					<td>{{if eq .Booking.Status "confirmed"}}<span class="badge badge-free">{{t "admin.isconfirmed"}}</span>{{else}}<span class="badge badge-busy">{{t "admin.iscancelled"}}</span>{{end}}</td>
 					<td class="right">
 						{{if and (eq .Booking.Status "confirmed") .Upcoming}}
 						<form method="post" action="/admin/avboka/{{.Booking.ID}}" class="inline"
-						      data-confirm="Avboka {{.Resource.Name}} för {{.Booking.Name}}?">
+						      data-confirm="{{t "admin.confirmcancel" (resName .Resource) .Booking.Name}}">
 							<input type="hidden" name="back" value="{{$.Data.BackURL}}">
-							<button type="submit" class="link-button danger-text">Avboka</button>
+							<button type="submit" class="link-button danger-text">{{t "unbook"}}</button>
 						</form>
 						{{end}}
 					</td>
@@ -101,19 +101,19 @@
 		</table>
 	</div>
 	{{else}}
-	<p class="empty">Inga bokningar matchar filtret.</p>
+	<p class="empty">{{t "admin.nomatch"}}</p>
 	{{end}}
 </section>
 
 <section class="panel">
-	<div class="panel-head"><h2>Beläggning kommande 30 dagar</h2></div>
+	<div class="panel-head"><h2>{{t "admin.usage"}}</h2></div>
 	<div class="table-wrap">
 		<table class="table">
-			<thead><tr><th>Resurs</th><th class="right">Bokningar</th><th class="right">Timmar</th><th>Kalenderflöde</th></tr></thead>
+			<thead><tr><th>{{t "admin.resource"}}</th><th class="right">{{t "admin.bookings"}}</th><th class="right">{{t "admin.hours"}}</th><th>{{t "admin.feed"}}</th></tr></thead>
 			<tbody>
 				{{range .Data.PerResource}}
 				<tr>
-					<td>{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</td>
+					<td>{{with .Resource.Emoji}}{{.}} {{end}}{{resName .Resource}}</td>
 					<td class="right">{{.Count}}</td>
 					<td class="right">{{printf "%.0f" .Hours}}</td>
 					<td><a class="quiet-link" href="/kalender/{{.Resource.ID}}/flode.ics">/kalender/{{.Resource.ID}}/flode.ics</a></td>

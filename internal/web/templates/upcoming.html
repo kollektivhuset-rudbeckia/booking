@@ -1,29 +1,28 @@
 {{define "content"}}
 {{$res := .Data.Resource}}
 <nav class="crumbs">
-	<a href="/">Boka</a> <span aria-hidden="true">/</span>
-	<a href="/resurs/{{$res.ID}}">{{$res.Name}}</a> <span aria-hidden="true">/</span>
-	<span>Kommande bokningar</span>
+	<a href="/">{{t "nav.book"}}</a> <span aria-hidden="true">/</span>
+	<a href="/resurs/{{$res.ID}}">{{resName $res}}</a> <span aria-hidden="true">/</span>
+	<span>{{t "upcoming.title"}}</span>
 </nav>
 
 <header class="resource-head">
-	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}Kommande bokningar</h1>
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{t "upcoming.title"}}</h1>
 	<p class="lede">
-		Allt som är bokat av {{$res.Name}} från och med nu, i tidsordning.
-		{{if .Data.NextFree}}Nästa lediga tid är
-			{{relativeDay (local .Data.NextFree) .Now}}{{if not .Data.IsDays}} {{clock (local .Data.NextFree)}}{{end}}.{{end}}
+		{{t "upcoming.lede" (resName $res)}}
+		{{with .Data.NextFreeLabel}}{{t "upcoming.next" .}}{{end}}
 	</p>
 	<p>
-		<a class="button" href="/resurs/{{$res.ID}}">Boka en tid</a>
-		<a class="button ghost" href="{{.Data.Feed}}">Prenumerera i kalender <small>.ics</small></a>
+		<a class="button" href="/resurs/{{$res.ID}}">{{t "upcoming.booknow"}}</a>
+		<a class="button ghost" href="{{.Data.Feed}}">{{t "upcoming.subscribe"}} <small>.ics</small></a>
 	</p>
 </header>
 
 {{if .Data.Groups}}
 <section class="panel">
 	<div class="panel-head">
-		<h2>{{.Data.Count}} bokningar</h2>
-		<span class="muted small">Passerade bokningar visas inte</span>
+		<h2>{{count "booking" .Data.Count}}</h2>
+		<span class="muted small">{{t "upcoming.past"}}</span>
 	</div>
 
 	<ol class="agenda">
@@ -39,19 +38,19 @@
 					<span class="agenda-time">
 						{{if .Nights}}
 							{{clock .Start}}
-							<small>{{nights .Nights}}, till {{dateShort .End}} {{clock .End}}</small>
+							<small>{{nights .Nights}}, {{t "resource.until" (printf "%s %s" (dateShort .End) (clock .End))}}</small>
 						{{else}}
 							{{clock .Start}}–{{clock .End}}
 							<small>{{.Duration}}</small>
 						{{end}}
 					</span>
 					<span class="agenda-who">
-						<strong>{{.Booking.Name}}</strong>{{if .Booking.Apartment}} <span class="muted">lgh {{.Booking.Apartment}}</span>{{end}}
-						{{if .Ongoing}}<span class="badge badge-live">pågår nu</span>{{end}}
+						<strong>{{.Booking.Name}}</strong>{{if .Booking.Apartment}} <span class="muted">{{t "admin.apartmentShort" .Booking.Apartment}}</span>{{end}}
+						{{if .Ongoing}}<span class="badge badge-live">{{t "mine.ongoing"}}</span>{{end}}
 						{{with .Booking.Note}}<small class="agenda-note">{{.}}</small>{{end}}
 					</span>
 					{{if $.Role.Admin}}
-					<a class="quiet-link agenda-link" href="/bokning/{{.Booking.ID}}">Visa</a>
+					<a class="quiet-link agenda-link" href="/bokning/{{.Booking.ID}}">{{t "show"}}</a>
 					{{end}}
 				</li>
 				{{end}}
@@ -63,7 +62,7 @@
 {{else}}
 <section class="panel">
 	<p class="empty">
-		Inget är bokat än. <a href="/resurs/{{$res.ID}}">Boka {{$res.Name}}</a> så blir du först.
+		{{t "upcoming.empty"}} <a href="/resurs/{{$res.ID}}">{{t "upcoming.first" (resName $res)}}</a> {{t "upcoming.beFirst"}}
 	</p>
 </section>
 {{end}}

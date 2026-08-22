@@ -7,6 +7,16 @@ import (
 	"testing"
 )
 
+// mustLoad parses a configuration that the test expects to be valid.
+func mustLoad(t *testing.T, body string) *Config {
+	t.Helper()
+	cfg, err := Load(write(t, body))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	return cfg
+}
+
 func write(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -186,8 +196,13 @@ resources:
 	if len(groups[0].Resources) != 1 {
 		t.Errorf("the disabled resource should be hidden, got %d", len(groups[0].Resources))
 	}
-	if groups[2].Category.Name != "Övrigt" {
-		t.Errorf("uncategorised resources should fall into Övrigt, got %q", groups[2].Category.Name)
+	// The loose bucket has no name of its own: the page names it, in the
+	// language it is being read in.
+	if groups[2].Category.ID != "ovrigt" {
+		t.Errorf("uncategorised resources should fall into a group of their own, got %q", groups[2].Category.ID)
+	}
+	if len(groups[2].Resources) != 1 {
+		t.Errorf("the uncategorised resource is missing, got %d", len(groups[2].Resources))
 	}
 }
 
@@ -302,5 +317,92 @@ func TestDemoModeDropsTheMattermostConfiguration(t *testing.T) {
 	}
 	if rt.Mattermost.Enabled() {
 		t.Errorf("demo mode kept %+v; it must talk to nobody", rt.Mattermost)
+	}
+}
+
+func TestLanguageDefaultsToSwedishAndRefusesOthers(t *testing.T) {
+	cfg := mustLoad(t, `
+site:
+  title: Bokning
+resources:
+  - id: cykel
+    name: Cykeln
+`)
+	if cfg.Site.Language != "sv" {
+		t.Errorf("language = %q, want sv by default", cfg.Site.Language)
+	}
+
+	if _, err := Load(write(t, `
+site:
+  title: Bokning
+  language: de
+resources:
+  - id: cykel
+    name: Cykeln
+`)); err == nil {
+		t.Error("a language the site has no words for should be refused")
+	}
+}
+
+// The house writes its own words once, and adds an _en sibling when it has
+// one. A missing translation shows the other language rather than a blank.
+func TestTheHousesOwnWordsFallBackBetweenLanguages(t *testing.T) {
+	cfg := mustLoad(t, `
+site:
+  title: Bokning
+  tagline: Kollektivhuset
+  tagline_en: The housing co-operative
+categories:
+  - id: cyklar
+    name: Cyklar
+    name_en: Bikes
+    description: Husets cyklar.
+resources:
+  - id: cykel
+    category: cyklar
+    name: Ellastcykeln
+    name_en: The cargo bike
+    description: Med plats för barn.
+    location: Cykelrummet
+    location_en: The bike room
+    instructions: Nyckeln hänger i städrummet.
+`)
+	res := cfg.Resources[0]
+	cat := cfg.Categories[0]
+
+	cases := []struct{ got, want string }{
+		{cfg.Site.TaglineFor("sv"), "Kollektivhuset"},
+		{cfg.Site.TaglineFor("en"), "The housing co-operative"},
+		{cat.NameFor("en"), "Bikes"},
+		{res.NameFor("sv"), "Ellastcykeln"},
+		{res.NameFor("en"), "The cargo bike"},
+		{res.LocationFor("en"), "The bike room"},
+		// No English written: the Swedish shows through rather than nothing.
+		{res.DescriptionFor("en"), "Med plats för barn."},
+		{res.InstructionsFor("en"), "Nyckeln hänger i städrummet."},
+		{cat.DescriptionFor("en"), "Husets cyklar."},
+		// And a language nobody configured behaves like the Swedish one.
+		{res.NameFor("de"), "Ellastcykeln"},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("got %q, want %q", c.got, c.want)
+		}
+	}
+}
+
+// A category with no name at all is the loose bucket, which the page names.
+func TestLinkLabelFallsBackToTheAddress(t *testing.T) {
+	c := Category{Link: "https://chat.example.com/channels/cykelpoolen"}
+	if got := c.LinkLabelFor("sv"); got != c.Link {
+		t.Errorf("= %q, want the bare address", got)
+	}
+	c.LinkText = "#cykelpoolen"
+	if got := c.LinkLabelFor("en"); got != "#cykelpoolen" {
+		t.Errorf("= %q, want the Swedish label when there is no English one", got)
+	}
+	c.LinkTextEN = "#cykelpoolen in Mattermost"
+	if got := c.LinkLabelFor("en"); got != "#cykelpoolen in Mattermost" {
+		t.Errorf("= %q", got)
 	}
 }

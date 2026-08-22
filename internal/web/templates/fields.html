@@ -2,49 +2,49 @@
 {{$f := .Data.Form}}
 <div class="field-grid">
 	<div class="field">
-		<label for="medlem">Vem bokar? <small>Mattermost</small></label>
+		<label for="medlem">{{t "form.who"}} <small>Mattermost</small></label>
 		<div class="member-field">
 			<span class="member-at" aria-hidden="true">@</span>
 			<input id="medlem" name="medlem" type="text" required autocomplete="off"
 			       spellcheck="false" autocapitalize="none" aria-controls="medlem-lista"
-			       value="{{$f.Member}}" placeholder="Anna Andersson eller anna.andersson"
+			       value="{{$f.Member}}" placeholder="{{t "form.who.placeholder"}}"
 			       data-member-search data-member-name="#name">
 			<ul class="combo-list" id="medlem-lista" role="listbox"
-			    aria-label="Personer i huset" hidden></ul>
+			    aria-label="{{t "form.who.list"}}" hidden></ul>
 		</div>
 		<small class="hint">
-			{{if .BotOn}}Sök på namn eller användarnamn. Bekräftelsen kommer som ett direktmeddelande från boten.{{else}}Mattermost är inte påslaget här – namnet sparas som du skriver det.{{end}}
-			{{with .AllowList}}<br>Under utprovningen kan bara <strong>{{.}}</strong> boka.{{end}}
+			{{if .BotOn}}{{t "form.who.hint"}}{{else}}{{t "form.who.nobot"}}{{end}}
+			{{with .AllowList}}<br>{{t "form.who.allow" .}}{{end}}
 		</small>
 	</div>
 	<div class="field">
-		<label for="name">Namn <small>frivilligt</small></label>
+		<label for="name">{{t "form.name"}} <small>{{t "optional"}}</small></label>
 		<input id="name" name="name" type="text" autocomplete="name"
 		       value="{{$f.Name}}" placeholder="Anna Andersson">
-		<small class="hint">Lämna tomt för att använda namnet från Mattermost.</small>
+		<small class="hint">{{t "form.name.hint"}}</small>
 	</div>
 	<div class="field">
-		<label for="apartment">Lägenhet <small>frivilligt</small></label>
+		<label for="apartment">{{t "form.apartment"}} <small>{{t "optional"}}</small></label>
 		<input id="apartment" name="apartment" type="text" autocomplete="off"
 		       value="{{$f.Apartment}}" placeholder="1403">
 	</div>
 	<div class="field">
-		<label for="phone">Telefon <small>frivilligt</small></label>
+		<label for="phone">{{t "form.phone"}} <small>{{t "optional"}}</small></label>
 		<input id="phone" name="phone" type="tel" autocomplete="tel"
 		       value="{{$f.Phone}}" placeholder="070-123 45 67">
 	</div>
 	<div class="field field-wide">
-		<label for="note">Meddelande <small>frivilligt</small></label>
+		<label for="note">{{t "form.note"}} <small>{{t "optional"}}</small></label>
 		<input id="note" name="note" type="text" maxlength="200"
-		       value="{{$f.Note}}" placeholder="Syns för andra i huset, t.ex. vad du ska göra">
+		       value="{{$f.Note}}" placeholder="{{t "form.note.placeholder"}}">
 	</div>
 </div>
 <label class="checkbox">
 	<input type="checkbox" name="remember" value="1" {{if $f.Remember}}checked{{end}}>
-	<span>Kom ihåg mina uppgifter på den här enheten</span>
+	<span>{{t "form.remember"}}</span>
 </label>
 <div class="form-actions">
-	<button type="submit" class="button primary">Boka</button>
-	<a class="button ghost" href="/resurs/{{.Data.Resource.ID}}">Avbryt</a>
+	<button type="submit" class="button primary">{{t "book"}}</button>
+	<a class="button ghost" href="/resurs/{{.Data.Resource.ID}}">{{t "cancel"}}</a>
 </div>
 {{end}}

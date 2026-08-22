@@ -3,7 +3,7 @@
 Bokningssystem för Kollektivhuset Rudbeckia. Husets medlemmar bokar cyklar,
 gästrum och lokaler bakom ett gemensamt lösenord, får en bekräftelse som
 direktmeddelande från husets Mattermost-bot och kan lägga in bokningen i sin
-egen kalender.
+egen kalender. Sidan finns på svenska och engelska.
 
 Byggt som en enda statisk Go-binär med SQLite. Ingen databasserver, ingen
 byggkedja för frontend, inget att uppdatera utöver containern.
@@ -103,6 +103,54 @@ aldrig en riktig chattserver.
 
 ---
 
+## Två språk
+
+Hela sajten finns på svenska och engelska. Flaggan uppe till höger byter, och
+valet minns i ett år i en kaka. Har man inte valt något gäller webbläsarens
+`Accept-Language`, och säger den ingenting vi förstår används `site.language`
+ur `config.yaml`.
+
+Orden ligger i `internal/i18n/catalog.go`, två språk sida vid sida på varje rad:
+
+```go
+"login.password": {"Husets lösenord", "The house password"},
+"error.toofar":   {"Du kan boka högst %s i förväg.", "You can book at most %s ahead."},
+```
+
+Mallar och kod slår upp dem med nyckeln — `{{t "login.password"}}` respektive
+`i18n.T(lang, "error.toofar", …)`. En nyckel som saknas renderas som `⟦nyckel⟧`
+i stället för ett tomrum, men den ska aldrig hinna dit: testerna läser mallarna
+och koden och underkänner bygget om någon nyckel saknas, om en översättning är
+tom, om `%s` inte står i samma ordning i båda språken, eller om det ligger kvar
+svensk text i en mall.
+
+Datum och tider följer med: `tisdag 18 augusti` blir `Tuesday 18 August`, och
+`3 månader` blir `3 months`.
+
+**Husets egna ord** — namnen, beskrivningarna och instruktionerna för det som
+går att boka — står i `config.yaml`, inte i katalogen. Varje sådant fält har en
+`_en`-syskonrad:
+
+```yaml
+- id: ellastcykel
+  name: Ellastcykeln
+  name_en: The electric cargo bike
+  description: Elektrisk lastcykel med plats för barn eller storhandling.
+  description_en: Electric cargo bike with room for children or a big shop.
+```
+
+Utelämnar du `_en` visas svenskan även på den engelska sidan. En halv
+översättning är bättre än ett tomrum: läsaren förstår ändå vad huset menar.
+
+**Botens meddelanden** går på mottagarens eget språk, det som står i hens
+Mattermost-konto — inte i det språk sidan råkade vara inställd på när bokningen
+gjordes. Meddelandet dyker upp i chatten, kanske dagar senare, på chattens
+villkor. Språket sparas med bokningen, så en avbokning långt efteråt talar
+samma språk utan att fråga Mattermost igen. Säger kontot ingenting vi förstår
+används `site.language`.
+
+---
+
 ## Vad som går att boka
 
 Allt bokningsbart står i `config.yaml`. Filen läses vid start, så starta om
@@ -185,6 +233,19 @@ in- och utcheckningsdatum i en månadskalender.
     max_active_per_user: 2
 ```
 
+### Sidans egna inställningar
+
+`site` överst i filen styr rubrik, tidszon och språk:
+
+```yaml
+site:
+  title: Rudbeckia bokning
+  language: sv          # sv eller en: vad en besökare möts av innan hen väljer
+  tagline: Kollektivhuset Rudbeckia
+  tagline_en: Rudbeckia housing co-operative
+  timezone: Europe/Stockholm
+```
+
 ### Lägga till en ny resurs
 
 Lägg till ett block under `resources`, med ett `id` som aldrig ändras (det står
@@ -198,6 +259,7 @@ utgångspunkt när huset vill boka fler saker digitalt.
 
 | Nyckel | Gäller | Betyder |
 |---|---|---|
+| `name_en`, `description_en`, `location_en`, `instructions_en` | båda | engelska varianter. Utelämnade visas svenskan |
 | `mode` | båda | `hours` eller `days` |
 | `durations` | hours | snabbvalen, i timmar |
 | `custom_duration` | hours | låter den som bokar skriva in en egen längd |
@@ -381,6 +443,7 @@ exporterade — Node behövs bara om du vill köra just dem.
 | `internal/store` | SQLite: bokningar, kollisioner, sökning |
 | `internal/booking` | Räknar ut lediga tider och validerar en bokning |
 | `internal/auth` | Lösenordsgrind, signerade kakor, tokens |
+| `internal/i18n` | Ordkatalogen, datum och språkvalet |
 | `internal/mattermost` | Bot-klient: användarkatalog och direktmeddelanden |
 | `internal/ical` | `.ics`-filer och kalenderlänkar |
 | `internal/web` | Rutter, HTML-mallar, CSS |

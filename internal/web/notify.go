@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/ical"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
@@ -17,39 +18,64 @@ import (
 // is already looking at their confirmation page, nobody is waiting for this.
 const notifyTimeout = 30 * time.Second
 
+// memberLang is the language to write to a member in: the one they have set in
+// Mattermost, or the deployment's own when they have set nothing we know.
+//
+// This is not the language of the page the booking was made on. A member who
+// reads the site in English while their chat is Swedish gets Swedish messages,
+// because the message arrives in the chat, days later, on its terms.
+func (s *Server) memberLang(u mattermost.User) i18n.Lang {
+	if lang, ok := i18n.Parse(u.Locale); ok {
+		return lang
+	}
+	return s.defaultLang()
+}
+
+// bookingLang is the same for a booking already saved. Bookings made before
+// the site had languages have nothing recorded and fall back.
+func (s *Server) bookingLang(b store.Booking) i18n.Lang {
+	if lang, ok := i18n.Parse(b.Lang); ok {
+		return lang
+	}
+	return s.defaultLang()
+}
+
 // notifyCreated direct-messages the confirmation, with the calendar file
 // attached and a link that drops the booking into Google Calendar.
 func (s *Server) notifyCreated(b store.Booking, res config.Resource) {
 	loc := s.cfg.Location()
-	ev := s.event(b, res)
+	lang := s.bookingLang(b)
+	l := string(lang)
+	ev := s.event(b, res, lang)
 	link := s.rt.BaseURL + "/bokning/" + b.ID
-	when := Interval(b.Start.In(loc), b.End.In(loc))
+	when := i18n.Interval(lang, b.Start.In(loc), b.End.In(loc))
 
 	var m bytes.Buffer
-	fmt.Fprintf(&m, "Hej %s! Din bokning av **%s** är bekräftad. :white_check_mark:\n\n", firstName(b.Name), res.Name)
+	fmt.Fprintf(&m, "%s\n\n", i18n.T(lang, "dm.confirmed", firstName(b.Name), res.NameFor(l)))
 	fmt.Fprintf(&m, "| | |\n|---|---|\n")
-	fmt.Fprintf(&m, "| **När** | %s |\n", cell(TitleCase(when)))
+	fmt.Fprintf(&m, "| **%s** | %s |\n", i18n.T(lang, "dm.when"), cell(i18n.TitleCase(when)))
 	if b.Mode == string(config.ModeDays) {
-		fmt.Fprintf(&m, "| **Längd** | %s |\n", Nights(nightsBetween(b, loc)))
+		fmt.Fprintf(&m, "| **%s** | %s |\n", i18n.T(lang, "dm.length"),
+			i18n.Count(lang, "night", nightsBetween(b, loc)))
 	} else {
-		fmt.Fprintf(&m, "| **Längd** | %s |\n", durationLabel(b))
+		fmt.Fprintf(&m, "| **%s** | %s |\n", i18n.T(lang, "dm.length"), i18n.Duration(b.End.Sub(b.Start)))
 	}
-	if res.Location != "" {
-		fmt.Fprintf(&m, "| **Var** | %s |\n", cell(res.Location))
+	if where := res.LocationFor(l); where != "" {
+		fmt.Fprintf(&m, "| **%s** | %s |\n", i18n.T(lang, "dm.where"), cell(where))
 	}
 	if b.Note != "" {
-		fmt.Fprintf(&m, "| **Meddelande** | %s |\n", cell(b.Note))
+		fmt.Fprintf(&m, "| **%s** | %s |\n", i18n.T(lang, "dm.note"), cell(b.Note))
 	}
 	m.WriteString("\n")
-	if res.Instructions != "" {
-		fmt.Fprintf(&m, "> %s\n\n", strings.ReplaceAll(strings.TrimSpace(res.Instructions), "\n", "\n> "))
+	if instructions := res.InstructionsFor(l); instructions != "" {
+		fmt.Fprintf(&m, "> %s\n\n", strings.ReplaceAll(strings.TrimSpace(instructions), "\n", "\n> "))
 	}
-	fmt.Fprintf(&m, "[Se eller avboka](%s) · [Lägg i Google Calendar](%s)\n", link, ical.GoogleLink(ev))
-	m.WriteString("Kalenderfilen är bifogad – öppna den i Apple Calendar, Outlook eller Thunderbird.\n")
+	fmt.Fprintf(&m, "%s\n", i18n.T(lang, "dm.links", link, ical.GoogleLink(ev)))
+	fmt.Fprintf(&m, "%s\n", i18n.T(lang, "dm.attachment"))
 
-	s.dm(b, "bekräftelse", m.String(), mattermost.File{
+	s.dm(b, "confirmation", m.String(), mattermost.File{
 		Filename: ical.Filename(res.ID, b.Start.In(loc)),
-		Data:     ical.Calendar(res.Name, []ical.Event{ev}),
+		Data:     ical.Calendar(res.NameFor(l), []ical.Event{ev}),
 	})
 }
 
@@ -57,17 +83,18 @@ func (s *Server) notifyCreated(b store.Booking, res config.Resource) {
 // calendar a cancellation event.
 func (s *Server) notifyCancelled(b store.Booking, res config.Resource) {
 	loc := s.cfg.Location()
-	when := Interval(b.Start.In(loc), b.End.In(loc))
-	ev := s.event(b, res)
+	lang := s.bookingLang(b)
+	l := string(lang)
+	when := i18n.Interval(lang, b.Start.In(loc), b.End.In(loc))
+	ev := s.event(b, res, lang)
 	ev.Cancelled = true
 
-	msg := fmt.Sprintf("Hej %s! Din bokning av **%s** %s är **avbokad**.\n\n"+
-		"Tiden är nu ledig för någon annan i huset. [Boka en ny tid](%s)\n",
-		firstName(b.Name), res.Name, cell(when), s.rt.BaseURL+"/resurs/"+res.ID)
+	msg := i18n.T(lang, "dm.cancelled", firstName(b.Name), res.NameFor(l), cell(when)) + "\n\n" +
+		i18n.T(lang, "dm.nowfree", s.rt.BaseURL+"/resurs/"+res.ID) + "\n"
 
-	s.dm(b, "avbokning", msg, mattermost.File{
+	s.dm(b, "cancellation", msg, mattermost.File{
 		Filename: ical.Filename(res.ID, b.Start.In(loc)),
-		Data:     ical.Calendar(res.Name, []ical.Event{ev}),
+		Data:     ical.Calendar(res.NameFor(l), []ical.Event{ev}),
 	})
 }
 
@@ -87,7 +114,8 @@ func (s *Server) dm(b store.Booking, kind, message string, files ...mattermost.F
 		s.log.Error("send "+kind, "booking", b.ID, "member", b.MMUsername, "err", err)
 		return
 	}
-	s.log.Info("notified member", "booking", b.ID, "member", b.MMUsername, "kind", kind)
+	s.log.Info("notified member", "booking", b.ID, "member", b.MMUsername,
+		"kind", kind, "language", b.Lang)
 }
 
 // cell escapes the pipe characters that would otherwise split a Markdown table
@@ -99,17 +127,6 @@ func firstName(name string) string {
 		return name[:i]
 	}
 	return name
-}
-
-func durationLabel(b store.Booking) string {
-	return formatHours(b.End.Sub(b.Start).Hours())
-}
-
-func formatHours(h float64) string {
-	if h == float64(int(h)) {
-		return fmt.Sprintf("%d h", int(h))
-	}
-	return fmt.Sprintf("%.1f h", h)
 }
 
 // nightsBetween counts calendar nights, so a DST change cannot shift the total.

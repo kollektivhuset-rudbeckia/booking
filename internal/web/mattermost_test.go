@@ -39,9 +39,11 @@ func TestCancellationIsAlsoSentAsADirectMessage(t *testing.T) {
 	h := newHarness(t)
 	member := h.login("husets-losenord")
 
+	// Anna's Mattermost is Swedish, so her messages are; that a member's own
+	// language is followed is TestTheBotWritesInTheMembersOwnLanguage's job.
 	rec := h.do("POST", "/resurs/ellastcykel/boka", url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"2"},
-		"medlem": {"bo.bengtsson"},
+		"medlem": {"anna.andersson"},
 	}, member)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("booking = %d", rec.Code)
@@ -58,8 +60,8 @@ func TestCancellationIsAlsoSentAsADirectMessage(t *testing.T) {
 	}
 
 	dm := h.chat.waitForDM(t, 2)
-	if dm.Username != "bo.bengtsson" {
-		t.Errorf("the cancellation went to %q, want bo.bengtsson", dm.Username)
+	if dm.Username != "anna.andersson" {
+		t.Errorf("the cancellation went to %q, want anna.andersson", dm.Username)
 	}
 	if !strings.Contains(dm.Message, "avbokad") {
 		t.Errorf("the message should say the booking is cancelled:\n%s", dm.Message)

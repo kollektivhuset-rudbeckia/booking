@@ -40,7 +40,11 @@ type Booking struct {
 	MMUserID string
 	// Email comes from the Mattermost account and is kept for the admin view
 	// and the calendar file. Nothing keys off it.
-	Email       string
+	Email string
+	// Lang is the language this member reads, taken from their Mattermost
+	// account when the booking was made. Messages about the booking go out in
+	// it long after the browser that made it has gone.
+	Lang        string
 	Phone       string
 	Note        string
 	Status      Status
@@ -69,6 +73,7 @@ CREATE TABLE IF NOT EXISTS bookings (
 	apartment    TEXT NOT NULL DEFAULT '',
 	mm_username  TEXT NOT NULL DEFAULT '',
 	mm_user_id   TEXT NOT NULL DEFAULT '',
+	lang         TEXT NOT NULL DEFAULT '',
 	email        TEXT NOT NULL DEFAULT '',
 	phone        TEXT NOT NULL DEFAULT '',
 	note         TEXT NOT NULL DEFAULT '',
@@ -143,7 +148,7 @@ func migrate(db *sql.DB) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read table info: %w", err)
 	}
-	for _, col := range []string{"mm_username", "mm_user_id"} {
+	for _, col := range []string{"mm_username", "mm_user_id", "lang"} {
 		if have[col] {
 			continue
 		}
@@ -161,22 +166,22 @@ func migrate(db *sql.DB) error {
 func (s *Store) Close() error { return s.db.Close() }
 
 // ErrConflict is returned when a booking overlaps an existing one.
-var ErrConflict = errors.New("tiden är redan bokad")
+var ErrConflict = errors.New("the time is already booked")
 
 // ErrNotFound is returned when a booking id or token does not exist.
-var ErrNotFound = errors.New("bokningen hittades inte")
+var ErrNotFound = errors.New("no such booking")
 
 const selectCols = `id, resource_id, start_utc, end_utc, mode, name, apartment,
-	mm_username, mm_user_id, email, phone, note, status, cancel_token, created_at,
-	cancelled_at, created_ip`
+	mm_username, mm_user_id, email, lang, phone, note, status, cancel_token,
+	created_at, cancelled_at, created_ip`
 
 func scan(rows interface{ Scan(...any) error }) (Booking, error) {
 	var b Booking
 	var start, end, created string
 	var cancelled sql.NullString
 	err := rows.Scan(&b.ID, &b.ResourceID, &start, &end, &b.Mode, &b.Name, &b.Apartment,
-		&b.MMUsername, &b.MMUserID, &b.Email, &b.Phone, &b.Note, &b.Status, &b.CancelToken,
-		&created, &cancelled, &b.CreatedIP)
+		&b.MMUsername, &b.MMUserID, &b.Email, &b.Lang, &b.Phone, &b.Note, &b.Status,
+		&b.CancelToken, &created, &cancelled, &b.CreatedIP)
 	if err != nil {
 		return b, err
 	}
@@ -227,10 +232,10 @@ func (s *Store) Create(ctx context.Context, b Booking, blockFrom, blockTo time.T
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings (`+selectCols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.ResourceID, utc(b.Start), utc(b.End), b.Mode, b.Name, b.Apartment,
-		Member(b.MMUsername), b.MMUserID, b.Email, b.Phone, b.Note, b.Status, b.CancelToken,
-		utc(b.CreatedAt), nil, b.CreatedIP)
+		Member(b.MMUsername), b.MMUserID, b.Email, b.Lang, b.Phone, b.Note, b.Status,
+		b.CancelToken, utc(b.CreatedAt), nil, b.CreatedIP)
 	if err != nil {
 		return err
 	}

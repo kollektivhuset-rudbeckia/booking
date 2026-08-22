@@ -7,57 +7,57 @@
 			<circle cx="24" cy="24" r="21"/><path d="m14 24.5 7 7 13-15"/>
 		</svg>
 	</div>
-	<h1>Klart – det är bokat!</h1>
-	<p class="lede">{{if and $.BotOn $b.MMUserID}}Boten skickar en bekräftelse med kalenderfil till <strong>@{{$b.MMUsername}}</strong> i Mattermost.{{else}}Spara sidan – Mattermost-utskick är inte påslaget på den här servern.{{end}}</p>
+	<h1>{{t "booking.done"}}</h1>
+	<p class="lede">{{if and $.BotOn $b.MMUserID}}{{t "booking.sent" (printf "@%s" $b.MMUsername)}}{{else}}{{t "booking.nobot"}}{{end}}</p>
 	{{else}}
-	<h1>Bokning</h1>
+	<h1>{{t "booking.title"}}</h1>
 	{{end}}
 
 	{{if eq $b.Status "cancelled"}}
-	<p class="alert alert-warn">Den här bokningen är avbokad{{if $b.CancelledAt.Valid}} {{dateLong (local $b.CancelledAt.Time)}}{{end}}.</p>
+	<p class="alert alert-warn">{{t "booking.cancelled"}}{{if $b.CancelledAt.Valid}} {{dateLong (local $b.CancelledAt.Time)}}{{end}}.</p>
 	{{end}}
 
 	<div class="receipt">
 		<div class="receipt-row">
-			<span>Vad</span>
-			<strong>{{with $row.Resource.Emoji}}{{.}} {{end}}{{$row.Resource.Name}}</strong>
+			<span>{{t "booking.what"}}</span>
+			<strong>{{with $row.Resource.Emoji}}{{.}} {{end}}{{resName $row.Resource}}</strong>
 		</div>
 		<div class="receipt-row">
-			<span>När</span>
+			<span>{{t "booking.when"}}</span>
 			<strong>{{titleCase (interval $row.Start $row.End)}}</strong>
 		</div>
 		<div class="receipt-row">
-			<span>Längd</span>
+			<span>{{t "rules.length"}}</span>
 			<strong>{{if $row.Nights}}{{nights $row.Nights}}{{else}}{{$row.Duration}}{{end}}</strong>
 		</div>
-		{{with $row.Resource.Location}}<div class="receipt-row"><span>Var</span><strong>{{.}}</strong></div>{{end}}
+		{{with resLocation $row.Resource}}<div class="receipt-row"><span>{{t "rules.where"}}</span><strong>{{.}}</strong></div>{{end}}
 		<div class="receipt-row">
-			<span>Bokad av</span>
-			<strong>{{$b.Name}}{{if $b.MMUsername}} · @{{$b.MMUsername}}{{end}}{{if $b.Apartment}} · lgh {{$b.Apartment}}{{end}}</strong>
+			<span>{{t "booking.who"}}</span>
+			<strong>{{$b.Name}}{{if $b.MMUsername}} · @{{$b.MMUsername}}{{end}}{{if $b.Apartment}} · {{t "admin.apartmentShort" $b.Apartment}}{{end}}</strong>
 		</div>
-		{{with $b.Note}}<div class="receipt-row"><span>Meddelande</span><strong>{{.}}</strong></div>{{end}}
+		{{with $b.Note}}<div class="receipt-row"><span>{{t "form.note"}}</span><strong>{{.}}</strong></div>{{end}}
 	</div>
 
-	{{with $row.Resource.Instructions}}<p class="note">{{.}}</p>{{end}}
+	{{with resInstructions $row.Resource}}<p class="note">{{.}}</p>{{end}}
 
 	{{if eq $b.Status "confirmed"}}
-	<h2 class="section-title">Lägg in i kalendern</h2>
+	<h2 class="section-title">{{t "booking.calendar"}}</h2>
 	<div class="calbuttons">
-		<a class="button" href="{{.Data.ICS}}">Apple Calendar / Outlook <small>.ics-fil</small></a>
-		<a class="button" href="{{.Data.Google}}" target="_blank" rel="noopener">Google Calendar</a>
-		<a class="button ghost" href="{{.Data.Outlook}}" target="_blank" rel="noopener">Outlook på webben</a>
+		<a class="button" href="{{.Data.ICS}}">{{t "booking.ics"}} <small>{{t "booking.icsfile"}}</small></a>
+		<a class="button" href="{{.Data.Google}}" target="_blank" rel="noopener">{{t "booking.google"}}</a>
+		<a class="button ghost" href="{{.Data.Outlook}}" target="_blank" rel="noopener">{{t "booking.outlook"}}</a>
 	</div>
 
-	<h2 class="section-title">Behöver du ändra?</h2>
-	<p class="muted">Avboka och boka en ny tid – då blir tiden ledig för någon annan i huset direkt.</p>
+	<h2 class="section-title">{{t "booking.change"}}</h2>
+	<p class="muted">{{t "booking.changehint"}}</p>
 	<form method="post" action="/bokning/{{$b.ID}}/avboka" class="inline"
-	      data-confirm="Vill du avboka {{$row.Resource.Name}} {{interval $row.Start $row.End}}?">
+	      data-confirm="{{t "booking.confirmcancel" (resName $row.Resource) (interval $row.Start $row.End)}}">
 		<input type="hidden" name="token" value="{{.Data.CancelToken}}">
-		<button type="submit" class="button danger">Avboka</button>
+		<button type="submit" class="button danger">{{t "unbook"}}</button>
 	</form>
 	{{end}}
 
-	<p class="back"><a class="quiet-link" href="/resurs/{{$row.Resource.ID}}">← Tillbaka till {{$row.Resource.Name}}</a></p>
+	<p class="back"><a class="quiet-link" href="/resurs/{{$row.Resource.ID}}">{{t "booking.back" (resName $row.Resource)}}</a></p>
 </div>
 {{end}}
 {{template "base" .}}

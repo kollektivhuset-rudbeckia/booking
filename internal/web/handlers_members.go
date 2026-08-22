@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
@@ -61,7 +62,7 @@ func (s *Server) handleMemberSearch(w http.ResponseWriter, r *http.Request, v *v
 	}
 	if err != nil {
 		s.log.Error("mattermost directory", "err", err)
-		http.Error(w, `{"error":"kunde inte läsa Mattermost"}`, http.StatusBadGateway)
+		http.Error(w, `{"error":"could not read the Mattermost directory"}`, http.StatusBadGateway)
 		return
 	}
 
@@ -155,12 +156,12 @@ func (s *Server) suggestions(users []mattermost.User) []memberSuggestion {
 // or into the error the member should read. It is also where the allow list is
 // enforced: while the bot is being tried out, only the listed people may book,
 // so only they are candidates.
-func (s *Server) resolveMember(ctx context.Context, typed string) (mattermost.User, []booking.Error) {
-	u, errs := s.findMember(ctx, typed, true)
+func (s *Server) resolveMember(ctx context.Context, lang i18n.Lang, typed string) (mattermost.User, []booking.Error) {
+	u, errs := s.findMember(ctx, lang, typed, true)
 	if len(errs) > 0 {
 		return mattermost.User{}, errs
 	}
-	return s.allowed(u)
+	return s.allowed(lang, u)
 }
 
 // findMember turns what someone typed into one account. The field is a plain
@@ -174,10 +175,10 @@ func (s *Server) resolveMember(ctx context.Context, typed string) (mattermost.Us
 // onlyAllowed narrows the candidates to those who may book. The booking form
 // wants that — it must not resolve to someone it would then refuse — while
 // looking up bookings works for anyone in the house.
-func (s *Server) findMember(ctx context.Context, typed string, onlyAllowed bool) (mattermost.User, []booking.Error) {
+func (s *Server) findMember(ctx context.Context, lang i18n.Lang, typed string, onlyAllowed bool) (mattermost.User, []booking.Error) {
 	typed = strings.TrimSpace(typed)
 	if typed == "" {
-		return mattermost.User{}, memberError("Välj vem i huset det gäller – sök på namn eller användarnamn.")
+		return mattermost.User{}, memberError(i18n.T(lang, "member.whose"))
 	}
 	// Without a chat server there is nothing to look anything up in, so the
 	// field is taken as typed. This is what the demo and local development do.
@@ -197,7 +198,7 @@ func (s *Server) findMember(ctx context.Context, typed string, onlyAllowed bool)
 	candidates, err := s.mm.Search(ctx, typed)
 	if err != nil {
 		s.log.Error("mattermost name search", "term", typed, "err", err)
-		return mattermost.User{}, memberError("Kunde inte nå Mattermost just nu. Försök igen.")
+		return mattermost.User{}, memberError(i18n.T(lang, "member.unreachable"))
 	}
 	if onlyAllowed {
 		kept := candidates[:0]
@@ -212,22 +213,20 @@ func (s *Server) findMember(ctx context.Context, typed string, onlyAllowed bool)
 	// A term that is somebody's whole name, nickname or username wins over one
 	// that merely starts it: with both "Anna Andersson" and "Anna Anderssons
 	// gäst" in the house, typing the first name means the first person.
-	shared := "matchar"
+	several := "member.several.matching"
 	if exact := exactly(candidates, typed); len(exact) > 0 {
-		candidates, shared = exact, "heter"
+		candidates, several = exact, "member.several.named"
 	}
 
 	switch len(candidates) {
 	case 1:
 		return candidates[0], nil
 	case 0:
-		return mattermost.User{}, memberError(
-			"Hittar ingen i husets Mattermost som heter " + typed + ". Kontrollera namnet eller användarnamnet.")
+		return mattermost.User{}, memberError(i18n.T(lang, "member.unknown", typed))
 	default:
 		// Never guess between people. Naming them turns the dead end into a
 		// choice: one more letter, or a click in the list, settles it.
-		return mattermost.User{}, memberError("Flera personer " + shared + " " + typed + ": " +
-			describe(candidates) + ". Skriv lite mer, eller välj i listan.")
+		return mattermost.User{}, memberError(i18n.T(lang, several, typed, describe(lang, candidates)))
 	}
 }
 
@@ -247,12 +246,12 @@ func exactly(users []mattermost.User, term string) []mattermost.User {
 
 // describe lists people the way the page talks about them, so an ambiguous
 // search reads as a choice rather than a rejection.
-func describe(users []mattermost.User) string {
+func describe(lang i18n.Lang, users []mattermost.User) string {
 	const most = 5
 	var names []string
 	for i, u := range users {
 		if i == most {
-			names = append(names, "med flera")
+			names = append(names, i18n.T(lang, "member.andmore"))
 			break
 		}
 		names = append(names, u.DisplayName()+" (@"+u.Username+")")
@@ -261,13 +260,12 @@ func describe(users []mattermost.User) string {
 }
 
 // allowed passes a resolved account through the allow list.
-func (s *Server) allowed(u mattermost.User) (mattermost.User, []booking.Error) {
+func (s *Server) allowed(lang i18n.Lang, u mattermost.User) (mattermost.User, []booking.Error) {
 	if u.Username == "" {
-		return mattermost.User{}, memberError("Välj vem i huset som bokar.")
+		return mattermost.User{}, memberError(i18n.T(lang, "member.choose"))
 	}
 	if !s.rt.Mattermost.Allowed(u.Username) {
-		return mattermost.User{}, memberError(
-			"Bokning är just nu bara öppen för " + s.rt.Mattermost.AllowList() + ".")
+		return mattermost.User{}, memberError(i18n.T(lang, "member.notallowed", s.rt.Mattermost.AllowList()))
 	}
 	return u, nil
 }

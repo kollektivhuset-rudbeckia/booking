@@ -46,8 +46,12 @@ type User struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Email     string `json:"email"`
-	IsBot     bool   `json:"is_bot"`
-	DeleteAt  int64  `json:"delete_at"`
+	// Locale is the language the person has set in Mattermost ("sv", "en").
+	// A message from the bot goes out in it, since that is the one setting
+	// they have made about being written to.
+	Locale   string `json:"locale"`
+	IsBot    bool   `json:"is_bot"`
+	DeleteAt int64  `json:"delete_at"`
 }
 
 // Active reports whether the account is a real, non-deactivated person.

@@ -1,37 +1,37 @@
 {{define "content"}}
 {{$res := .Data.Resource}}{{$h := .Data.Hours}}{{$rules := .Data.Rules}}
-<nav class="crumbs"><a href="/">Boka</a> <span aria-hidden="true">/</span> <span>{{$res.Name}}</span></nav>
+<nav class="crumbs"><a href="/">{{t "nav.book"}}</a> <span aria-hidden="true">/</span> <span>{{resName $res}}</span></nav>
 
 <header class="resource-head">
-	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{$res.Name}}</h1>
-	{{with $res.Description}}<p class="lede">{{.}}</p>{{end}}
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{resName $res}}</h1>
+	{{with resDescription $res}}<p class="lede">{{.}}</p>{{end}}
 	<ul class="facts">
-		<li><span>Snabbval</span><strong>{{$rules.Durations}}</strong></li>
-		{{with $rules.Custom}}<li><span>Egen längd</span><strong>{{.}}</strong></li>{{end}}
-		<li><span>Öppet för bokning</span><strong>{{$rules.Window}}</strong></li>
-		{{with $rules.Buffer}}<li><span>Paus mellan bokningar</span><strong>{{.}}</strong></li>{{end}}
-		<li><span>Max i förväg</span><strong>{{$rules.Advance}}</strong></li>
-		{{with $rules.Limit}}<li><span>Max per person</span><strong>{{.}}</strong></li>{{end}}
-		{{with $res.Location}}<li><span>Var</span><strong>{{.}}</strong></li>{{end}}
+		<li><span>{{t "rules.durations"}}</span><strong>{{$rules.Durations}}</strong></li>
+		{{with $rules.Custom}}<li><span>{{t "rules.custom"}}</span><strong>{{.}}</strong></li>{{end}}
+		<li><span>{{t "rules.window"}}</span><strong>{{$rules.Window}}</strong></li>
+		{{with $rules.Buffer}}<li><span>{{t "rules.buffer"}}</span><strong>{{.}}</strong></li>{{end}}
+		<li><span>{{t "rules.advance"}}</span><strong>{{$rules.Advance}}</strong></li>
+		{{with $rules.Limit}}<li><span>{{t "rules.limit"}}</span><strong>{{.}}</strong></li>{{end}}
+		{{with resLocation $res}}<li><span>{{t "rules.where"}}</span><strong>{{.}}</strong></li>{{end}}
 	</ul>
-	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
+	{{with resInstructions $res}}<p class="note">{{.}}</p>{{end}}
 	<p class="head-links">
-		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">Se alla kommande bokningar →</a>
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">{{t "resource.upcoming"}}</a>
 		{{with $res.InfoURL}}
-		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">Läs mer på rudbeckia.nu →</a>
+		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">{{t "resource.readmore"}}</a>
 		{{end}}
 	</p>
 </header>
 
 {{with .Data.Errors}}
 <div class="alert alert-error" role="alert">
-	<strong>Bokningen gick inte igenom</strong>
+	<strong>{{t "resource.failed"}}</strong>
 	<ul>{{range .}}<li>{{.Message}}</li>{{end}}</ul>
 </div>
 {{end}}
 
 <section class="panel">
-	<h2 class="visually-hidden">Välj dag</h2>
+	<h2 class="visually-hidden">{{t "resource.pickday"}}</h2>
 	<div class="daystrip" role="tablist">
 		{{range $h.Days}}
 		<a class="daytab{{if .Selected}} is-selected{{end}}{{if not .Free}} is-full{{end}}"
@@ -40,18 +40,18 @@
 			<span class="daytab-wd">{{weekdayShort .Date}}</span>
 			<span class="daytab-num">{{.Date.Day}}</span>
 			<span class="daytab-mon">{{.Label}}</span>
-			{{if .Today}}<span class="daytab-dot" title="Idag"></span>{{end}}
+			{{if .Today}}<span class="daytab-dot" title="{{t "resource.today"}}"></span>{{end}}
 		</a>
 		{{end}}
 	</div>
 
-	<div class="durations" role="group" aria-label="Hur länge">
-		<span class="durations-label">Hur länge?</span>
+	<div class="durations" role="group" aria-label="{{t "resource.howlong"}}">
+		<span class="durations-label">{{t "resource.howlong"}}</span>
 		{{range $h.Durations}}
 		<a class="pill{{if .Selected}} is-selected{{end}}{{if eq .Free 0}} is-empty{{end}}"
 		   href="/resurs/{{$res.ID}}?datum={{isoDate $h.Day.Date}}&amp;langd={{.Param}}">
 			{{.Label}}
-			<small>{{if eq .Free 0}}fullt{{else}}{{.Free}} tider{{end}}</small>
+			<small>{{if eq .Free 0}}{{t "resource.full"}}{{else}}{{count "slot" .Free}}{{end}}</small>
 		</a>
 		{{end}}
 
@@ -59,8 +59,8 @@
 		<a class="pill pill-custom{{if $h.ShowCustom}} is-selected{{end}}"
 		   href="/resurs/{{$res.ID}}?datum={{isoDate $h.Day.Date}}&amp;langd={{$h.CustomParam}}&amp;egen=1"
 		   aria-expanded="{{if $h.ShowCustom}}true{{else}}false{{end}}" aria-controls="egen-langd">
-			Egen längd
-			<small>välj själv</small>
+			{{t "resource.own"}}
+			<small>{{t "resource.ownhint"}}</small>
 		</a>
 		{{end}}
 	</div>
@@ -71,20 +71,19 @@
 		      data-live-duration>
 			<input type="hidden" name="datum" value="{{isoDate $h.Day.Date}}">
 			<input type="hidden" name="egen" value="1">
-			<label for="langd">Hur många timmar?</label>
+			<label for="langd">{{t "resource.ownhours"}}</label>
 			<input id="langd" name="langd" type="text" inputmode="decimal"
-			       value="{{$h.CustomValue}}" placeholder="t.ex. 3" size="4"
+			       value="{{$h.CustomValue}}" placeholder="{{t "resource.ownexample"}}" size="4"
 			       autofocus autocomplete="off" aria-describedby="langd-hint">
-			<span class="unit">tim</span>
-			<button type="submit" class="button primary small">Visa tider</button>
+			<span class="unit">{{t "resource.ownunit"}}</span>
+			<button type="submit" class="button primary small">{{t "resource.ownshow"}}</button>
 		</form>
 		<div id="custom-feedback">
 			{{with $h.CustomError}}<p class="alert alert-warn custom-note">{{.}}</p>{{end}}
 		</div>
 		<p class="hint" id="langd-hint">
-			Mellan {{$h.MinLabel}} och {{$h.MaxLabel}}, i jämna steg om {{$h.StepLabel}}.
-			Skriv <code>1,5</code> för en och en halv timme. Tiderna nedan
-			uppdateras medan du skriver.
+			{{t "resource.ownrange" $h.MinLabel $h.MaxLabel $h.StepLabel}}
+			{{t "resource.owndecimal" "1,5"}}
 		</p>
 	</div>
 	{{end}}
@@ -105,12 +104,12 @@
 
 	<div id="slot-area" aria-live="polite">
 	<h3 class="slots-title">
-		Lediga starttider {{relativeDay $h.Day.Date .Now}} – {{dateLong $h.Day.Date}}
+		{{t "resource.slots" (relativeDay $h.Day.Date .Now) (dateLong $h.Day.Date)}}
 		<small>{{duration $h.Duration}}</small>
 	</h3>
 
 	{{if eq $h.Day.FreeCount 0}}
-	<p class="empty">Inget ledigt den här dagen för {{duration $h.Duration}}. Prova en annan dag eller en kortare tid.</p>
+	<p class="empty">{{t "resource.noslots" (duration $h.Duration)}}</p>
 	{{else}}
 	<div class="slots">
 		{{range $h.Day.Slots}}
@@ -118,7 +117,7 @@
 			<a class="slot{{if and $h.Selected (eq (clock (local .Start)) (clock (local $h.Selected.Start)))}} is-selected{{end}}"
 			   href="/resurs/{{$res.ID}}?datum={{isoDate (local .Start)}}&amp;langd={{$h.Param}}{{if $h.ShowCustom}}&amp;egen=1{{end}}&amp;start={{clock (local .Start)}}#boka">
 				<strong>{{clock (local .Start)}}</strong>
-				<small>till {{clock (local .End)}}</small>
+				<small>{{t "resource.until" (clock (local .End))}}</small>
 			</a>
 			{{else}}
 			<span class="slot is-taken" title="{{.Reason}}">
@@ -134,9 +133,9 @@
 
 {{if $h.Selected}}
 <section class="panel form-panel" id="boka">
-	<h2>Bekräfta bokningen</h2>
+	<h2>{{t "resource.confirm"}}</h2>
 	<p class="summary">
-		<strong>{{$res.Name}}</strong><br>
+		<strong>{{resName $res}}</strong><br>
 		{{titleCase (dateLong (local $h.Selected.Start))}}, {{clock (local $h.Selected.Start)}}–{{clock (local $h.Selected.End)}}
 		({{duration $h.Duration}})
 	</p>

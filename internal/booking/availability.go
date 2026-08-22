@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -14,7 +15,7 @@ type Slot struct {
 	Start     time.Time
 	End       time.Time
 	Available bool
-	// Reason explains an unavailable slot, e.g. "Bokad" or "Har redan varit".
+	// Reason explains an unavailable slot, in the reader's language.
 	Reason string
 }
 
@@ -79,8 +80,9 @@ func blocked(start, end time.Time, buffer time.Duration, existing []store.Bookin
 // BuildDay computes the slot grid and timeline for one day and one duration.
 // existing must contain the resource's confirmed bookings overlapping that day
 // (plus a little margin so buffers on either side are seen). me is the viewing
-// member's Mattermost username, so their own bookings can be marked as theirs.
-func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []store.Booking, now time.Time, loc *time.Location, me string) DayView {
+// member's Mattermost username, so their own bookings can be marked as theirs,
+// and lang is the language the reasons are written in.
+func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []store.Booking, now time.Time, loc *time.Location, me string, lang i18n.Lang) DayView {
 	openFrom, openTo := dayWindow(r, day, loc)
 	buffer := time.Duration(r.Rules.BufferMinutes) * time.Minute
 	step := time.Duration(r.Rules.SlotStepMinutes) * time.Minute
@@ -94,16 +96,16 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 		slot := Slot{Start: s, End: e, Available: true}
 		switch {
 		case s.Before(earliest):
-			slot.Available, slot.Reason = false, "Har passerat"
+			slot.Available, slot.Reason = false, i18n.T(lang, "slot.past")
 		case s.After(latest):
-			slot.Available, slot.Reason = false, "För långt fram i tiden"
+			slot.Available, slot.Reason = false, i18n.T(lang, "slot.far")
 		default:
 			if b, hit := blocked(s, e, buffer, existing); hit {
 				slot.Available = false
 				if b.MMUsername != "" && me != "" && store.Member(b.MMUsername) == store.Member(me) {
-					slot.Reason = "Din bokning"
+					slot.Reason = i18n.T(lang, "slot.mine")
 				} else {
-					slot.Reason = "Upptagen"
+					slot.Reason = i18n.T(lang, "slot.taken")
 				}
 			}
 		}

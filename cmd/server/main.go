@@ -86,6 +86,7 @@ func check(log *slog.Logger) error {
 	log.Info("configuration is valid",
 		"path", path,
 		"timezone", cfg.Site.Timezone,
+		"language", cfg.Site.Language,
 		"categories", len(cfg.Categories),
 		"resources", len(cfg.Resources),
 		"bookable", active)
@@ -111,7 +112,8 @@ func run(log *slog.Logger) error {
 	log.Info("configuration loaded",
 		"path", rt.ConfigPath,
 		"resources", len(cfg.Resources),
-		"timezone", cfg.Site.Timezone)
+		"timezone", cfg.Site.Timezone,
+		"language", cfg.Site.Language)
 
 	st, err := store.Open(rt.DBPath)
 	if err != nil {

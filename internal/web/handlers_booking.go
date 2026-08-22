@@ -9,6 +9,7 @@ import (
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/ical"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
@@ -16,11 +17,11 @@ import (
 func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *view) {
 	res, ok := s.cfg.Resource(r.PathValue("id"))
 	if !ok || !res.Active() {
-		s.renderError(w, r, http.StatusNotFound, "Resursen finns inte", "Kontrollera länken.")
+		s.errorPage(w, r, http.StatusNotFound, "error.noresource", "error.checklink")
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, "Formuläret kunde inte läsas", "Försök igen.")
+		s.errorPage(w, r, http.StatusBadRequest, "error.form", "error.form.detail")
 		return
 	}
 	now := s.now()
@@ -40,12 +41,12 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 	// Who is booking? The form names a Mattermost account; everything else
 	// about the member comes from there, including where to send the
 	// confirmation.
-	who, memberErrs := s.resolveMember(r.Context(), form.Member)
+	who, memberErrs := s.resolveMember(r.Context(), v.Lang, form.Member)
 	if form.Name == "" {
 		form.Name = who.DisplayName()
 	}
 
-	start, end, parseErrs := s.parseInterval(res, r, loc)
+	start, end, parseErrs := s.parseInterval(res, r, loc, v.Lang)
 	errs := append(memberErrs, parseErrs...)
 	if len(errs) == 0 {
 		req := booking.Request{
@@ -54,7 +55,7 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 			MMUsername: who.Username, MMUserID: who.ID,
 			Email: who.Email, Phone: form.Phone, Note: form.Note,
 		}
-		blockFrom, blockTo, verrs := booking.Validate(r.Context(), s.store, req, now, loc)
+		blockFrom, blockTo, verrs := booking.Validate(r.Context(), s.store, req, now, loc, v.Lang)
 		errs = verrs
 		if len(errs) == 0 {
 			b := store.Booking{
@@ -68,6 +69,7 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 				MMUsername:  who.Username,
 				MMUserID:    who.ID,
 				Email:       who.Email,
+				Lang:        string(s.memberLang(who)),
 				Phone:       form.Phone,
 				Note:        form.Note,
 				Status:      store.StatusConfirmed,
@@ -78,10 +80,10 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 			err := s.store.Create(r.Context(), b, blockFrom, blockTo)
 			switch {
 			case errors.Is(err, store.ErrConflict):
-				errs = []booking.Error{{Field: "time", Message: "Någon hann före – tiden är redan bokad. Välj en annan tid."}}
+				errs = []booking.Error{{Field: "time", Message: i18n.T(v.Lang, "error.racelost")}}
 			case err != nil:
 				s.log.Error("create booking", "resource", res.ID, "err", err)
-				errs = []booking.Error{{Message: "Bokningen kunde inte sparas. Försök igen."}}
+				errs = []booking.Error{{Message: i18n.T(v.Lang, "error.notsaved")}}
 			default:
 				if form.Remember {
 					s.guard.RememberIdentity(w, auth.Identity{
@@ -100,20 +102,20 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 	}
 
 	// Something was wrong: re-render the page with the errors and the form data.
-	v.Title = res.Name
-	data := map[string]any{"Resource": res, "Rules": summarize(res), "Errors": errs, "Form": form}
+	v.Title = res.NameFor(string(v.Lang))
+	data := map[string]any{"Resource": res, "Rules": summarize(v.Lang, res), "Errors": errs, "Form": form}
 	switch res.Rules.Mode {
 	case config.ModeHours:
 		// buildHourPage reads the posted fields, so the member's day, length
 		// and start time survive the round trip and the form stays open.
-		page, err := s.buildHourPage(r, res, now, loc, form.Member)
+		page, err := s.buildHourPage(r, res, now, loc, form.Member, v.Lang)
 		if err == nil {
 			data["Hours"] = page
 		}
 		v.Data = data
 		s.render(w, r, http.StatusUnprocessableEntity, "resource_hours.html", v)
 	case config.ModeDays:
-		page, err := s.buildDayPage(r, res, now, loc, form.Member)
+		page, err := s.buildDayPage(r, res, now, loc, form.Member, v.Lang)
 		if err == nil {
 			data["Days"] = page
 		}
@@ -123,37 +125,36 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 }
 
 // parseInterval turns the posted fields into a concrete time interval.
-func (s *Server) parseInterval(res config.Resource, r *http.Request, loc *time.Location) (time.Time, time.Time, []booking.Error) {
+func (s *Server) parseInterval(res config.Resource, r *http.Request, loc *time.Location, lang i18n.Lang) (time.Time, time.Time, []booking.Error) {
 	switch res.Rules.Mode {
 	case config.ModeHours:
 		date := r.FormValue("datum")
 		clock := r.FormValue("start")
 		dur, err := booking.ParseHours(r.FormValue("langd"))
 		if err != nil {
-			return time.Time{}, time.Time{}, []booking.Error{{Field: "duration", Message: "Välj hur länge du vill boka."}}
+			return time.Time{}, time.Time{}, []booking.Error{{Field: "duration", Message: i18n.T(lang, "error.pickhowlong")}}
 		}
 		start, err := time.ParseInLocation("2006-01-02 15:04", date+" "+clock, loc)
 		if err != nil {
-			return time.Time{}, time.Time{}, []booking.Error{{Field: "time", Message: "Välj en starttid."}}
+			return time.Time{}, time.Time{}, []booking.Error{{Field: "time", Message: i18n.T(lang, "error.pickstart")}}
 		}
 		return start, start.Add(dur), nil
 	case config.ModeDays:
 		from, errA := time.ParseInLocation("2006-01-02", r.FormValue("fran"), loc)
 		to, errB := time.ParseInLocation("2006-01-02", r.FormValue("till"), loc)
 		if errA != nil || errB != nil {
-			return time.Time{}, time.Time{}, []booking.Error{{Field: "time", Message: "Välj datum för in- och utcheckning."}}
+			return time.Time{}, time.Time{}, []booking.Error{{Field: "time", Message: i18n.T(lang, "error.pickdates")}}
 		}
 		start, end := booking.DayRange(res, from, to, loc)
 		return start, end, nil
 	}
-	return time.Time{}, time.Time{}, []booking.Error{{Message: "Okänd bokningstyp."}}
+	return time.Time{}, time.Time{}, []booking.Error{{Message: i18n.T(lang, "error.unknownmode")}}
 }
 
 func (s *Server) handleBooking(w http.ResponseWriter, r *http.Request, v *view) {
 	b, err := s.store.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, "Bokningen hittades inte",
-			"Länken kan vara gammal, eller bokningen borttagen.")
+		s.errorPage(w, r, http.StatusNotFound, "error.nobooking", "error.oldlink")
 		return
 	}
 	res, known := s.cfg.Resource(b.ResourceID)
@@ -161,10 +162,10 @@ func (s *Server) handleBooking(w http.ResponseWriter, r *http.Request, v *view) 
 		res = config.Resource{ID: b.ResourceID, Name: b.ResourceID}
 	}
 	loc := s.cfg.Location()
-	ev := s.event(b, res)
+	ev := s.event(b, res, v.Lang)
 
-	rows := s.rows([]store.Booking{b}, loc)
-	v.Title = "Bokning – " + res.Name
+	rows := s.rows(v.Lang, []store.Booking{b}, loc)
+	v.Title = i18n.T(v.Lang, "booking.title") + " – " + res.NameFor(string(v.Lang))
 	v.Data = map[string]any{
 		"Row":         rows[0],
 		"New":         r.URL.Query().Get("ny") == "1",
@@ -187,7 +188,8 @@ func (s *Server) handleBookingICS(w http.ResponseWriter, r *http.Request, v *vie
 	if !ok {
 		res = config.Resource{ID: b.ResourceID, Name: b.ResourceID}
 	}
-	data := ical.Calendar(res.Name, []ical.Event{s.event(b, res)})
+	lang := s.lang(r)
+	data := ical.Calendar(res.NameFor(string(lang)), []ical.Event{s.event(b, res, lang)})
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+
 		ical.Filename(res.ID, b.Start.In(s.cfg.Location()))+"\"")
@@ -198,7 +200,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 	id := r.PathValue("id")
 	b, err := s.store.Get(r.Context(), id)
 	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, "Bokningen hittades inte", "Den kan redan vara avbokad.")
+		s.errorPage(w, r, http.StatusNotFound, "error.nobooking", "error.alreadygone")
 		return
 	}
 	token := r.FormValue("token")
@@ -206,12 +208,11 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 	// the booking belongs to the Mattermost account this browser remembers.
 	own := v.Ident.MMUsername != "" && store.Member(v.Ident.MMUsername) == b.MMUsername
 	if token != b.CancelToken && !own && !v.Role.Admin() {
-		s.renderError(w, r, http.StatusForbidden, "Kunde inte avboka",
-			"Använd länken i bekräftelsen från boten i Mattermost, eller be husets administratör om hjälp.")
+		s.errorPage(w, r, http.StatusForbidden, "error.nocancel", "error.nocancel.how")
 		return
 	}
 	if err := s.store.Cancel(r.Context(), id, b.CancelToken, true, s.now()); err != nil {
-		s.renderError(w, r, http.StatusConflict, "Kunde inte avboka", "Bokningen är kanske redan avbokad.")
+		s.errorPage(w, r, http.StatusConflict, "error.nocancel", "error.nocancel.done")
 		return
 	}
 	res, ok := s.cfg.Resource(b.ResourceID)
@@ -235,7 +236,7 @@ func (s *Server) handleMyBookings(w http.ResponseWriter, r *http.Request, v *vie
 	name, typed, lookupErr := v.Ident.Name, member, ""
 	if q := strings.TrimSpace(r.URL.Query().Get("medlem")); q != "" {
 		typed = q
-		who, errs := s.findMember(r.Context(), q, false)
+		who, errs := s.findMember(r.Context(), v.Lang, q, false)
 		if len(errs) > 0 {
 			member, lookupErr = "", errs[0].Message
 		} else {
@@ -249,10 +250,10 @@ func (s *Server) handleMyBookings(w http.ResponseWriter, r *http.Request, v *vie
 		if err != nil {
 			s.log.Error("load own bookings", "err", err)
 		} else {
-			rows = s.rows(list, loc)
+			rows = s.rows(v.Lang, list, loc)
 		}
 	}
-	v.Title = "Mina bokningar"
+	v.Title = i18n.T(v.Lang, "mine.title")
 	v.Data = map[string]any{
 		"Rows":      rows,
 		"Member":    member,
@@ -275,35 +276,40 @@ func (s *Server) handleResourceFeed(w http.ResponseWriter, r *http.Request, v *v
 	now := s.now()
 	list, err := s.store.InRange(r.Context(), res.ID, now.AddDate(0, 0, -90), now.AddDate(1, 0, 0))
 	if err != nil {
-		http.Error(w, "kunde inte läsa bokningar", http.StatusInternalServerError)
+		http.Error(w, "could not read the bookings", http.StatusInternalServerError)
 		return
 	}
+	// A feed is subscribed to by a calendar, not read by a browser, so it is
+	// written in the deployment's own language rather than a reader's.
+	lang := s.defaultLang()
 	events := make([]ical.Event, 0, len(list))
 	for _, b := range list {
-		events = append(events, s.event(b, res))
+		events = append(events, s.event(b, res, lang))
 	}
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Write(ical.Calendar(s.cfg.Site.Title+" – "+res.Name, events))
+	w.Write(ical.Calendar(s.cfg.Site.Title+" – "+res.NameFor(string(lang)), events))
 }
 
-// event renders a booking as a calendar event.
-func (s *Server) event(b store.Booking, res config.Resource) ical.Event {
-	desc := "Bokad av " + b.Name
+// event renders a booking as a calendar event, in the language of whoever the
+// file is being handed to.
+func (s *Server) event(b store.Booking, res config.Resource, lang i18n.Lang) ical.Event {
+	l := string(lang)
+	desc := i18n.T(lang, "ical.bookedby", b.Name)
 	if b.Apartment != "" {
-		desc += " (lgh " + b.Apartment + ")"
+		desc += " (" + i18n.T(lang, "admin.apartmentShort", b.Apartment) + ")"
 	}
 	if b.Note != "" {
 		desc += "\n" + b.Note
 	}
-	if res.Instructions != "" {
-		desc += "\n\n" + res.Instructions
+	if instructions := res.InstructionsFor(l); instructions != "" {
+		desc += "\n\n" + instructions
 	}
-	desc += "\n\nAvboka: " + s.rt.BaseURL + "/bokning/" + b.ID
+	desc += "\n\n" + i18n.T(lang, "ical.cancel", s.rt.BaseURL+"/bokning/"+b.ID)
 	return ical.Event{
 		UID:         b.ID + "@booking.rudbeckia.nu",
-		Summary:     res.Name + " – " + b.Name,
+		Summary:     res.NameFor(l) + " – " + b.Name,
 		Description: desc,
-		Location:    res.Location,
+		Location:    res.LocationFor(l),
 		Start:       b.Start,
 		End:         b.End,
 		Created:     b.CreatedAt,

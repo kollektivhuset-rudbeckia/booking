@@ -2,11 +2,11 @@ package web
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -34,42 +34,29 @@ type ruleSummary struct {
 	CheckTime string
 }
 
-func summarize(r config.Resource) ruleSummary {
+func summarize(lang i18n.Lang, r config.Resource) ruleSummary {
 	ru := r.Rules
 	s := ruleSummary{Mode: ru.Mode}
 	switch ru.Mode {
 	case config.ModeHours:
-		s.Durations = booking.DurationList(ru.Durations)
+		s.Durations = i18n.DurationList(lang, ru.Durations)
 		s.Window = ru.OpenFrom + "–" + ru.OpenTo
 		if ru.CustomDuration {
-			s.Custom = booking.FormatDuration(time.Duration(ru.MinDurationMinutes)*time.Minute) +
-				" – " + booking.FormatDuration(time.Duration(ru.MaxDurationMinutes)*time.Minute)
+			s.Custom = i18n.Duration(time.Duration(ru.MinDurationMinutes)*time.Minute) +
+				" – " + i18n.Duration(time.Duration(ru.MaxDurationMinutes)*time.Minute)
 		}
 	case config.ModeDays:
-		s.Nights = Nights(ru.MinDays) + " – " + Nights(ru.MaxDays)
-		s.CheckTime = "in " + ru.CheckIn + ", ut " + ru.CheckOut
+		s.Nights = i18n.Count(lang, "night", ru.MinDays) + " – " + i18n.Count(lang, "night", ru.MaxDays)
+		s.CheckTime = i18n.T(lang, "rules.checktime", ru.CheckIn, ru.CheckOut)
 	}
 	if ru.BufferMinutes > 0 {
-		s.Buffer = booking.FormatDuration(time.Duration(ru.BufferMinutes) * time.Minute)
+		s.Buffer = i18n.Duration(time.Duration(ru.BufferMinutes) * time.Minute)
 	}
-	s.Advance = formatDays(ru.MaxAdvanceDays)
+	s.Advance = i18n.Days(lang, ru.MaxAdvanceDays)
 	if ru.MaxActivePerUser > 0 {
-		s.Limit = pluralBookings(ru.MaxActivePerUser)
+		s.Limit = i18n.Count(lang, "active", ru.MaxActivePerUser)
 	}
 	return s
-}
-
-func formatDays(d int) string {
-	switch {
-	case d%365 == 0:
-		return pluralYears(d / 365)
-	case d%30 == 0:
-		return pluralMonths(d / 30)
-	case d == 1:
-		return "1 dag"
-	default:
-		return strconv.Itoa(d) + " dagar"
-	}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, v *view) {
@@ -88,8 +75,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, v *view) {
 			Resources []resourceCard
 		}{Category: g.Category}
 		for _, res := range g.Resources {
-			card := resourceCard{Resource: res, Rules: summarize(res)}
-			if t, ok := s.nextFree(r, res, now, loc); ok {
+			card := resourceCard{Resource: res, Rules: summarize(v.Lang, res)}
+			if t, ok := s.nextFree(r, res, now, loc, v.Lang); ok {
 				card.NextFree = &t
 			} else {
 				card.Busy = true
@@ -105,21 +92,21 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, v *view) {
 		if err != nil {
 			s.log.Error("load own bookings", "err", err)
 		} else {
-			mine = s.rows(list, loc)
+			mine = s.rows(v.Lang, list, loc)
 			if len(mine) > 3 {
 				mine = mine[:3]
 			}
 		}
 	}
 
-	v.Title = "Boka"
+	v.Title = i18n.T(v.Lang, "nav.book")
 	v.Data = map[string]any{"Groups": cards, "Mine": mine}
 	s.render(w, r, http.StatusOK, "index.html", v)
 }
 
 // nextFree scans forward for the first bookable start time, using the shortest
 // allowed duration. It looks a couple of weeks ahead and then gives up.
-func (s *Server) nextFree(r *http.Request, res config.Resource, now time.Time, loc *time.Location) (time.Time, bool) {
+func (s *Server) nextFree(r *http.Request, res config.Resource, now time.Time, loc *time.Location, lang i18n.Lang) (time.Time, bool) {
 	horizon := 14
 	if res.Rules.MaxAdvanceDays < horizon {
 		horizon = res.Rules.MaxAdvanceDays
@@ -137,7 +124,7 @@ func (s *Server) nextFree(r *http.Request, res config.Resource, now time.Time, l
 		dur := time.Duration(res.Rules.Durations[0] * float64(time.Hour))
 		for d := 0; d <= horizon; d++ {
 			day := now.In(loc).AddDate(0, 0, d)
-			dv := booking.BuildDay(res, day, dur, existing, now, loc, "")
+			dv := booking.BuildDay(res, day, dur, existing, now, loc, "", lang)
 			for _, slot := range dv.Slots {
 				if slot.Available {
 					return slot.Start, true
@@ -170,7 +157,7 @@ type bookingRow struct {
 	Ongoing  bool
 }
 
-func (s *Server) rows(list []store.Booking, loc *time.Location) []bookingRow {
+func (s *Server) rows(lang i18n.Lang, list []store.Booking, loc *time.Location) []bookingRow {
 	now := s.now()
 	out := make([]bookingRow, 0, len(list))
 	for _, b := range list {
@@ -184,7 +171,7 @@ func (s *Server) rows(list []store.Booking, loc *time.Location) []bookingRow {
 			Known:    ok,
 			Start:    b.Start.In(loc),
 			End:      b.End.In(loc),
-			Duration: booking.FormatDuration(b.End.Sub(b.Start)),
+			Duration: i18n.Duration(b.End.Sub(b.Start)),
 			Upcoming: b.Start.After(now),
 			Ongoing:  !b.Start.After(now) && b.End.After(now),
 		}
@@ -196,25 +183,4 @@ func (s *Server) rows(list []store.Booking, loc *time.Location) []bookingRow {
 		out = append(out, row)
 	}
 	return out
-}
-
-func pluralBookings(n int) string {
-	if n == 1 {
-		return "1 aktiv bokning"
-	}
-	return strconv.Itoa(n) + " aktiva bokningar"
-}
-
-func pluralMonths(n int) string {
-	if n == 1 {
-		return "1 månad"
-	}
-	return strconv.Itoa(n) + " månader"
-}
-
-func pluralYears(n int) string {
-	if n == 1 {
-		return "1 år"
-	}
-	return strconv.Itoa(n) + " år"
 }

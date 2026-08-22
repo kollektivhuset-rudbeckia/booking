@@ -4,7 +4,7 @@ services:
     container_name: booking-rudbeckia
     restart: unless-stopped
     ports:
-      - "8099:8080"
+      - "8081:8080"
     environment:
       # --- Required ---------------------------------------------------------
       BOOKING_PASSWORD: ${BOOKING_PASSWORD:?set BOOKING_PASSWORD in .env}
@@ -25,6 +25,7 @@ services:
       MATTERMOST_TOKEN: ${MATTERMOST_TOKEN:-}
       # Usernames allowed to book. Empty means everyone in the directory.
       MATTERMOST_ALLOW: ${MATTERMOST_ALLOW:-}
+    env_file: .env
     volumes:
       - booking-data:/data
       # Mount your own resource list over the one baked into the image.

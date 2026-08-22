@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/i18n"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -39,7 +40,7 @@ func TestValidateAcceptsAGoodRequest(t *testing.T) {
 		End:        at(loc, "2026-05-02 14:00"),
 		Name:       "Anna Andersson",
 		MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %s", messages(errs))
@@ -92,14 +93,14 @@ func TestValidateRejectsBadInput(t *testing.T) {
 		{"beyond the horizon", func(r *Request) {
 			r.Start = at(loc, "2026-09-02 10:00")
 			r.End = r.Start.Add(4 * time.Hour)
-		}, "dagar i förväg"},
+		}, "i förväg"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := base
 			tc.mutate(&req)
-			_, _, errs := Validate(context.Background(), st, req, now, loc)
+			_, _, errs := Validate(context.Background(), st, req, now, loc, i18n.SV)
 			if len(errs) == 0 {
 				t.Fatalf("expected an error mentioning %q, got none", tc.wantSub)
 			}
@@ -134,7 +135,7 @@ func TestValidateEnforcesActiveBookingCap(t *testing.T) {
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 12:00"),
 		Name:     "Anna", MMUsername: "ANNA.Andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 
 	if !strings.Contains(messages(errs), "aktiva bokningar") {
 		t.Errorf("expected the per-member cap to fire, got %q", messages(errs))
@@ -165,7 +166,7 @@ func TestValidateEnforcesWeeklyHourCap(t *testing.T) {
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 14:00"), // 4 h more, over the 6 h cap
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if !strings.Contains(messages(errs), "gränsen är") {
 		t.Errorf("expected the weekly hour cap to fire, got %q", messages(errs))
 	}
@@ -176,7 +177,7 @@ func TestValidateEnforcesWeeklyHourCap(t *testing.T) {
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 12:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if len(errs) != 0 {
 		t.Errorf("2 h should fit under the 6 h cap, got %q", messages(errs))
 	}
@@ -204,7 +205,7 @@ func TestValidateDetectsOverlap(t *testing.T) {
 		Start:    at(loc, "2026-05-03 14:00"),
 		End:      at(loc, "2026-05-03 15:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if !strings.Contains(messages(errs), "bokad") {
 		t.Errorf("expected a conflict inside the buffer, got %q", messages(errs))
 	}
@@ -215,7 +216,7 @@ func TestValidateDetectsOverlap(t *testing.T) {
 		Start:    at(loc, "2026-05-03 14:30"),
 		End:      at(loc, "2026-05-03 15:30"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, now, loc)
+	}, now, loc, i18n.SV)
 	if len(errs) != 0 {
 		t.Errorf("14:30 clears the buffer but was rejected: %q", messages(errs))
 	}
@@ -231,7 +232,7 @@ func TestValidateNightLimits(t *testing.T) {
 		_, _, errs := Validate(context.Background(), st, Request{
 			Resource: room(), Start: start, End: end,
 			Name: "Anna", MMUsername: "anna.andersson",
-		}, now, loc)
+		}, now, loc, i18n.SV)
 		return errs
 	}
 
@@ -255,7 +256,7 @@ func TestValidateRejectsDisabledResource(t *testing.T) {
 		Start:    at(loc, "2026-05-02 10:00"),
 		End:      at(loc, "2026-05-02 14:00"),
 		Name:     "Anna", MMUsername: "anna.andersson",
-	}, at(loc, "2026-05-01 08:00"), loc)
+	}, at(loc, "2026-05-01 08:00"), loc, i18n.SV)
 
 	if !strings.Contains(messages(errs), "går inte att boka") {
 		t.Errorf("a disabled resource should be refused, got %q", messages(errs))

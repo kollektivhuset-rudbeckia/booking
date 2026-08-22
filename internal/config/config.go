@@ -35,49 +35,102 @@ type Config struct {
 
 // Site holds presentation-level settings shared by every page.
 type Site struct {
-	Title      string `yaml:"title"`
+	Title string `yaml:"title"`
+	// Language is what a visitor sees before choosing for themselves, and the
+	// language of anything written to somebody we cannot ask. "sv" or "en".
+	Language   string `yaml:"language"`
 	Tagline    string `yaml:"tagline"`
+	TaglineEN  string `yaml:"tagline_en"`
 	HouseName  string `yaml:"house_name"`
 	Timezone   string `yaml:"timezone"`
 	HomeURL    string `yaml:"home_url"`
 	SupportURL string `yaml:"support_url"`
 	// FooterNote is rendered at the bottom of every page (Markdown-free plain text).
-	FooterNote string `yaml:"footer_note"`
+	FooterNote   string `yaml:"footer_note"`
+	FooterNoteEN string `yaml:"footer_note_en"`
 }
 
-// Category groups resources on the start page.
+// TaglineFor and FooterFor give the house's own words in one language.
+func (s Site) TaglineFor(lang string) string { return pick(lang, s.Tagline, s.TaglineEN) }
+func (s Site) FooterFor(lang string) string  { return pick(lang, s.FooterNote, s.FooterNoteEN) }
+
+// pick returns the wording for a language, falling back to the other one.
+// Half a translation is better than a blank space where a sentence was: the
+// reader can still make out what the house meant.
+func pick(lang, sv, en string) string {
+	sv, en = strings.TrimSpace(sv), strings.TrimSpace(en)
+	if lang == "en" {
+		if en != "" {
+			return en
+		}
+		return sv
+	}
+	if sv != "" {
+		return sv
+	}
+	return en
+}
+
+// Category groups resources on the start page. Everything a member reads has
+// an _en sibling; leave it out and the Swedish is shown instead.
 type Category struct {
-	ID          string `yaml:"id"`
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Emoji       string `yaml:"emoji"`
+	ID            string `yaml:"id"`
+	Name          string `yaml:"name"`
+	NameEN        string `yaml:"name_en"`
+	Description   string `yaml:"description"`
+	DescriptionEN string `yaml:"description_en"`
+	Emoji         string `yaml:"emoji"`
 	// Link and LinkText point somewhere the group belongs, typically the
 	// Mattermost channel where the house talks about these things.
-	Link     string `yaml:"link"`
-	LinkText string `yaml:"link_text"`
+	Link       string `yaml:"link"`
+	LinkText   string `yaml:"link_text"`
+	LinkTextEN string `yaml:"link_text_en"`
 }
 
-// LinkLabel is the text to show for Link, falling back to the bare address.
-func (c Category) LinkLabel() string {
-	if c.LinkText != "" {
-		return c.LinkText
+// NameFor and DescriptionFor give the category's words in one language.
+func (c Category) NameFor(lang string) string { return pick(lang, c.Name, c.NameEN) }
+func (c Category) DescriptionFor(lang string) string {
+	return pick(lang, c.Description, c.DescriptionEN)
+}
+
+// LinkLabelFor is the text to show for Link, falling back to the bare address.
+func (c Category) LinkLabelFor(lang string) string {
+	if label := pick(lang, c.LinkText, c.LinkTextEN); label != "" {
+		return label
 	}
 	return c.Link
 }
 
-// Resource is one bookable thing: a bike, a room, a workshop.
+// Resource is one bookable thing: a bike, a room, a workshop. Everything a
+// member reads has an _en sibling; leave it out and the Swedish is shown, so a
+// house that only speaks one language writes each thing once.
 type Resource struct {
-	ID           string   `yaml:"id"`
-	Category     string   `yaml:"category"`
-	Name         string   `yaml:"name"`
-	Emoji        string   `yaml:"emoji"`
-	Description  string   `yaml:"description"`
-	Location     string   `yaml:"location"`
-	Instructions string   `yaml:"instructions"`
-	InfoURL      string   `yaml:"info_url"`
-	Enabled      *bool    `yaml:"enabled"`
-	Rules        Rules    `yaml:"booking"`
-	Fields       []string `yaml:"extra_fields"`
+	ID             string   `yaml:"id"`
+	Category       string   `yaml:"category"`
+	Name           string   `yaml:"name"`
+	NameEN         string   `yaml:"name_en"`
+	Emoji          string   `yaml:"emoji"`
+	Description    string   `yaml:"description"`
+	DescriptionEN  string   `yaml:"description_en"`
+	Location       string   `yaml:"location"`
+	LocationEN     string   `yaml:"location_en"`
+	Instructions   string   `yaml:"instructions"`
+	InstructionsEN string   `yaml:"instructions_en"`
+	InfoURL        string   `yaml:"info_url"`
+	Enabled        *bool    `yaml:"enabled"`
+	Rules          Rules    `yaml:"booking"`
+	Fields         []string `yaml:"extra_fields"`
+}
+
+// NameFor, DescriptionFor, LocationFor and InstructionsFor give the house's
+// own words about this thing in one language.
+func (r Resource) NameFor(lang string) string { return pick(lang, r.Name, r.NameEN) }
+func (r Resource) DescriptionFor(lang string) string {
+	return pick(lang, r.Description, r.DescriptionEN)
+}
+func (r Resource) LocationFor(lang string) string { return pick(lang, r.Location, r.LocationEN) }
+func (r Resource) InstructionsFor(lang string) string {
+	return pick(lang, r.Instructions, r.InstructionsEN)
 }
 
 // Active reports whether the resource should be offered for booking.
@@ -204,6 +257,12 @@ func (c *Config) normalize() error {
 	}
 	if c.Site.Timezone == "" {
 		c.Site.Timezone = "Europe/Stockholm"
+	}
+	if c.Site.Language == "" {
+		c.Site.Language = "sv"
+	}
+	if c.Site.Language != "sv" && c.Site.Language != "en" {
+		return fmt.Errorf(`site.language must be "sv" or "en", not %q`, c.Site.Language)
 	}
 	loc, err := time.LoadLocation(c.Site.Timezone)
 	if err != nil {
@@ -358,7 +417,7 @@ type Group struct {
 }
 
 // Grouped returns active resources bucketed by category, in config order.
-// Resources without a category end up in a trailing "Övrigt" group.
+// Resources without a category end up in a trailing group the page names.
 func (c *Config) Grouped() []Group {
 	groups := make([]Group, 0, len(c.Categories)+1)
 	index := map[string]int{}
@@ -384,7 +443,8 @@ func (c *Config) Grouped() []Group {
 		}
 	}
 	if len(loose) > 0 {
-		out = append(out, Group{Category: Category{ID: "ovrigt", Name: "Övrigt"}, Resources: loose})
+		// The name is left to the page, which has both languages.
+		out = append(out, Group{Category: Category{ID: "ovrigt"}, Resources: loose})
 	}
 	return out
 }
