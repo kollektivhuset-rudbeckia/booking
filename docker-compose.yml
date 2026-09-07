@@ -1,6 +1,6 @@
 services:
   booking:
-    image: ghcr.io/o5ten/booking:latest
+    image: ghcr.io/kollektivhuset-rudbeckia/booking:latest
     container_name: booking-rudbeckia
     restart: unless-stopped
     ports:

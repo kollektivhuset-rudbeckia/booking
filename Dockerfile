@@ -33,7 +33,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 LABEL org.opencontainers.image.title="Rudbeckia bokning" \
       org.opencontainers.image.description="Bokningssystem för kollektivhusets gemensamma cyklar, rum och lokaler" \
-      org.opencontainers.image.source="https://github.com/mikaelo/booking.rudbeckia.nu" \
+      org.opencontainers.image.source="https://github.com/kollektivhuset-rudbeckia/booking" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --from=build /out/booking /booking

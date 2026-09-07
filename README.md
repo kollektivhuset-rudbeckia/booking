@@ -20,7 +20,7 @@ bokningar så att du har något att klicka på.
 
 ```bash
 docker run --rm -p 8080:8080 -e DEMO=true \
-    ghcr.io/mikaelo/booking.rudbeckia.nu:latest
+    ghcr.io/kollektivhuset-rudbeckia/booking:latest
 ```
 
 **Med Go** — om du klonat repot:
@@ -391,16 +391,26 @@ kontrollerar själv att `latest` verkligen kom med, så regeln inte tappas bort
 vid en framtida ändring.
 
 ```
-ghcr.io/mikaelo/booking.rudbeckia.nu:latest
+ghcr.io/kollektivhuset-rudbeckia/booking:latest
 ```
 
-Uppdatera på servern:
+### Utrullningen sköter sig själv
+
+`.github/workflows/deploy.yml` rullar ut den till quebec. Den hänger på att
+bygget lyckats och inte på pushen, så en utrullning kan aldrig starta om
+containern på gårdagens image. En push till `main` som går igenom testerna
+står alltså på <https://booking.rudbeckia.nu> ett par minuter senare, utan att
+någon rör servern. Hur den kommer in, vad som skickas och vad man gör när
+något går fel: [docs/deploy.md](docs/deploy.md).
+
+För hand, om du kör den någon annanstans:
 
 ```bash
 docker compose pull && docker compose up -d
 ```
 
-Första gången du hämtar från ett privat paket:
+Paketet är publikt, så servern behöver ingen inloggning. Hämtar du från ett
+privat paket:
 
 ```bash
 echo $GITHUB_TOKEN | docker login ghcr.io -u <användarnamn> --password-stdin
