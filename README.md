@@ -326,6 +326,18 @@ Utan JavaScript är fältet en vanlig textruta: skriv användarnamnet, eller hel
 namnet, och servern slår upp det. Två personer med samma namn får ett
 felmeddelande som räknar upp bägges användarnamn i stället för en gissning.
 
+**Boka direkt.** Varje kort på startsidan har en **Boka direkt**-knapp som
+hoppar över dag, längd och starttid: den tar den närmast lediga tiden, i den
+kortaste längden resursen erbjuder, och öppnar bekräftelsen på den. Ett klick i
+stället för fyra.
+
+Men bara när tiden går att ta *nu*. Är cykeln utlånad till i morgon bitti, eller
+gästrummet ledigt först på fredag, stannar knappen på resursens sida och
+frågar: *"Det går inte att boka direkt. Närmast lediga tid är imorgon 06:00."*
+Tiden ligger där som en knapp att trycka på, och sidan visar dagen den pratar
+om — men ingenting är bokat förrän någon säger ja. "Boka nu" och "boka något om
+tre dagar" är inte samma beslut, och knappen säger det första.
+
 **Bekräftelse i Mattermost.** När bokningen gått igenom skickar boten ett
 direktmeddelande med en bifogad `.ics`-fil (Apple Calendar, Outlook,
 Thunderbird) och en direktlänk till Google Calendar. Meddelandet innehåller

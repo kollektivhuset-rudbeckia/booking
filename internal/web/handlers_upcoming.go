@@ -50,14 +50,9 @@ func (s *Server) handleResourceUpcoming(w http.ResponseWriter, r *http.Request, 
 		groups = append(groups, dayGroup{Date: day, Rows: []bookingRow{row}, Today: day.Equal(today)})
 	}
 
-	// "imorgon 09:00" for a bike, "imorgon" for a guest room: a room is booked
-	// by the night, so a clock time would be noise.
 	nextFreeLabel := ""
-	if t, ok := s.nextFree(r, res, now, loc, v.Lang); ok {
-		nextFreeLabel = i18n.RelativeDay(v.Lang, t.In(loc), now.In(loc))
-		if res.Rules.Mode != config.ModeDays {
-			nextFreeLabel += " " + i18n.Clock(t.In(loc))
-		}
+	if next, ok := s.nextFree(r, res, now, loc, v.Lang); ok {
+		nextFreeLabel = whenLabel(v.Lang, res, next.Start, now, loc)
 	}
 
 	v.Title = i18n.T(v.Lang, "upcoming.title") + " – " + res.NameFor(string(v.Lang))

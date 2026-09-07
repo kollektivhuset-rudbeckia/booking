@@ -28,6 +28,18 @@
 </div>
 {{end}}
 
+{{with .Data.Halt}}
+<div class="alert alert-warn" role="alert">
+	<strong>{{t "quick.notnow"}}</strong>
+	{{if .Nothing}}
+	<p>{{t "quick.nothing"}}</p>
+	{{else}}
+	<p>{{t "quick.soonest" .Label}}</p>
+	<p><a class="button primary small" href="{{.Link}}">{{t "quick.take" .Label}}</a></p>
+	{{end}}
+</div>
+{{end}}
+
 <section class="panel booking-layout" id="boka">
 	<div class="calendar-column">
 		<div class="month-head">

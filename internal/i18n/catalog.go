@@ -76,6 +76,7 @@ var catalog = map[string]entry{
 	"index.free":     {"Ledigt %s", "Free %s"},
 	"index.nofree":   {"Inget ledigt just nu", "Nothing free right now"},
 	"index.cta":      {"Boka →", "Book →"},
+	"index.booknow":  {"Boka direkt", "Book right away"},
 	"index.upcoming": {"Kommande bokningar", "Coming bookings"},
 	"index.other":    {"Övrigt", "Other"},
 
@@ -124,6 +125,12 @@ var catalog = map[string]entry{
 	"resource.legend.free":  {"ledigt", "free"},
 	"resource.legend.taken": {"bokat", "booked"},
 	"resource.legend.mine":  {"din bokning", "your booking"},
+
+	// --- the quick "book right away" button ----------------------------------
+	"quick.notnow":  {"Det går inte att boka direkt", "It cannot be booked right away"},
+	"quick.soonest": {"Närmast lediga tid är %s.", "The soonest free time is %s."},
+	"quick.take":    {"Boka %s i stället", "Book %s instead"},
+	"quick.nothing": {"Ingenting är ledigt inom den närmaste tiden. Välj en annan dag här nedanför.", "Nothing is free any time soon. Choose another day below."},
 
 	// --- why a time cannot be picked -----------------------------------------
 	"slot.past":  {"Har passerat", "Already gone"},

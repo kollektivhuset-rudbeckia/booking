@@ -79,14 +79,88 @@ func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view)
 		s.errorPage(w, r, http.StatusNotFound, "error.noresource", "error.checklink.home")
 		return
 	}
+	s.renderResource(w, r, v, res, nil, nil)
+}
+
+// handleQuickBook is the "book right away" button on a start page card. It
+// finds the soonest time the resource will take and opens the confirmation
+// form on it, so booking the next free hour is one click rather than a day, a
+// length and a start time.
+//
+// It only goes straight through when that time is one the member can have now.
+// A bike that is out until tomorrow morning, or a room free from Friday, stops
+// here instead: the page offers the time rather than taking it, because "book
+// it now" and "book it three days out" are not the same decision, and the
+// button says the first.
+func (s *Server) handleQuickBook(w http.ResponseWriter, r *http.Request, v *view) {
+	res, ok := s.cfg.Resource(r.PathValue("id"))
+	if !ok || !res.Active() {
+		s.errorPage(w, r, http.StatusNotFound, "error.noresource", "error.checklink.home")
+		return
+	}
 	now := s.now()
 	loc := s.cfg.Location()
+
+	next, found := s.nextFree(r, res, now, loc, v.Lang)
+	if found && next.Immediate {
+		http.Redirect(w, r, next.Link, http.StatusSeeOther)
+		return
+	}
+
+	// Halted. Show the resource page as it looks on the day being suggested,
+	// with the offer on top and no form open: taking it is a second click.
+	halt := quickHalt{Nothing: !found}
+	on := url.Values{}
+	if found {
+		halt.Label = whenLabel(v.Lang, res, next.Start, now, loc)
+		halt.Link = next.Link
+		start := next.Start.In(loc)
+		switch res.Rules.Mode {
+		case config.ModeHours:
+			on.Set("datum", i18n.ISODate(start))
+			on.Set("langd", booking.HoursParam(next.End.Sub(next.Start)))
+		case config.ModeDays:
+			on.Set("manad", start.Format("2006-01"))
+		}
+	}
+	s.renderResource(w, r, v, res, map[string]any{"Halt": halt}, on)
+}
+
+// quickHalt is the offer the quick button leaves on the resource page when it
+// will not book by itself.
+type quickHalt struct {
+	// Label is when the soonest time is, in words: "imorgon 09:00".
+	Label string
+	// Link books it.
+	Link string
+	// Nothing is true when the resource has nothing free within the horizon at
+	// all, so there is no time to offer.
+	Nothing bool
+}
+
+// renderResource draws a resource's booking page. extra is merged into the
+// template data. on, when it is not nil, stands in for the request's own query
+// parameters — which is how a halt shows the day it is suggesting rather than
+// whatever day the page would otherwise have opened on.
+func (s *Server) renderResource(w http.ResponseWriter, r *http.Request, v *view, res config.Resource, extra map[string]any, on url.Values) {
+	now := s.now()
+	loc := s.cfg.Location()
+	if on != nil {
+		// The page builders read the day off the request, so that is where it
+		// has to be asked for. The copy keeps this request's own URL intact.
+		r = r.Clone(r.Context())
+		r.URL = &url.URL{Path: r.URL.Path, RawQuery: on.Encode()}
+		r.Form, r.PostForm = nil, nil
+	}
 	v.Title = res.NameFor(string(v.Lang))
 	data := map[string]any{
 		"Resource": res,
 		"Rules":    summarize(v.Lang, res),
 		"Errors":   nil,
 		"Form":     formFromIdentity(v.Ident),
+	}
+	for key, val := range extra {
+		data[key] = val
 	}
 
 	switch res.Rules.Mode {

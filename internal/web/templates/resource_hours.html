@@ -30,6 +30,18 @@
 </div>
 {{end}}
 
+{{with .Data.Halt}}
+<div class="alert alert-warn" role="alert">
+	<strong>{{t "quick.notnow"}}</strong>
+	{{if .Nothing}}
+	<p>{{t "quick.nothing"}}</p>
+	{{else}}
+	<p>{{t "quick.soonest" .Label}}</p>
+	<p><a class="button primary small" href="{{.Link}}">{{t "quick.take" .Label}}</a></p>
+	{{end}}
+</div>
+{{end}}
+
 <section class="panel">
 	<h2 class="visually-hidden">{{t "resource.pickday"}}</h2>
 	<div class="daystrip" role="tablist">

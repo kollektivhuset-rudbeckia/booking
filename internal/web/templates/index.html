@@ -61,9 +61,12 @@
 					<span class="card-cta">{{t "index.cta"}}</span>
 				</footer>
 			</a>
-			<p class="card-aside">
+			<div class="card-aside">
+				{{if .NextFree}}
+				<a class="button small primary" href="/resurs/{{.Resource.ID}}/nu">{{t "index.booknow"}}</a>
+				{{end}}
 				<a class="quiet-link" href="/resurs/{{.Resource.ID}}/bokningar">{{t "index.upcoming"}}</a>
-			</p>
+			</div>
 		</article>
 		{{end}}
 	</div>

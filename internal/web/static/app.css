@@ -666,7 +666,11 @@ label { font-size: .85rem; }
 }
 
 /* A second link on a card, outside the big clickable area. */
-.card-aside { margin: 0; padding: 0 1.25rem 1.1rem; font-size: .82rem; }
+.card-aside {
+	margin: 0; padding: 0 1.25rem 1.1rem; font-size: .82rem;
+	display: flex; align-items: center; justify-content: space-between;
+	gap: .6rem; flex-wrap: wrap;
+}
 .head-links { margin-top: 1rem; font-size: .9rem; }
 
 .auth-mark { width: 56px; height: 56px; display: block; margin: 0 0 1rem; }

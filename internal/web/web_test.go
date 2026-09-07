@@ -59,6 +59,16 @@ resources:
       open_from: "06:00"
       open_to: "22:00"
       max_advance_days: 30
+  - id: tvattstugan
+    category: cyklar
+    name: Tvättstugan
+    booking:
+      mode: hours
+      durations: [2]
+      slot_step_minutes: 120
+      open_from: "06:00"
+      open_to: "22:00"
+      max_advance_days: 30
   - id: gastrum-1
     category: gastrum
     name: Gästrum 1
@@ -1021,5 +1031,239 @@ func TestAssetHashesDifferPerFile(t *testing.T) {
 	}
 	if got := h.server.asset("finns-inte.js"); got != "/static/finns-inte.js" {
 		t.Errorf("an unknown file should be left alone, got %q", got)
+	}
+}
+
+// --- The quick "book right away" button -------------------------------------
+
+// seed puts a confirmed booking straight into the database, so a test can say
+// "this thing is already out" without going through the form.
+func (h *harness) seed(resource string, start time.Time, length time.Duration) {
+	h.Helper()
+	b := store.Booking{
+		ID:         resource + "-" + start.Format("0102-1504"),
+		ResourceID: resource,
+		Start:      start,
+		End:        start.Add(length),
+		Mode:       "hours",
+		Name:       "Någon Annan",
+		MMUsername: "nagon.annan",
+		Status:     store.StatusConfirmed,
+		CreatedAt:  h.now,
+	}
+	if err := h.store.Create(context.Background(), b, b.Start, b.End); err != nil {
+		h.Fatalf("seed %s at %s: %v", resource, start, err)
+	}
+}
+
+func (h *harness) at(day int, hour, minute int) time.Time {
+	d := h.now.AddDate(0, 0, day)
+	return time.Date(d.Year(), d.Month(), d.Day(), hour, minute, 0, 0, h.loc)
+}
+
+// The button is the whole point of the feature: one click from the card.
+func TestTheCardOffersTheQuickButtonWhenSomethingIsFree(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	body := h.do("GET", "/", nil, member).Body.String()
+	if !strings.Contains(body, `href="/resurs/ellastcykel/nu"`) {
+		t.Error("the bike is free, so its card should offer the quick button")
+	}
+	if !strings.Contains(body, "Boka direkt") {
+		t.Error("the quick button should say what it does")
+	}
+}
+
+// Free right now: straight to the confirmation form for that time, with the
+// day, the length and the start already chosen.
+func TestQuickBookGoesStraightThroughWhenTheTimeIsNow(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	rec := h.do("GET", "/resurs/ellastcykel/nu", nil, member)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303\n%s", rec.Code, rec.Body.String())
+	}
+	// 08:00 is the harness's own clock, so the soonest start is right now.
+	want := "/resurs/ellastcykel?datum=" + h.date(0) + "&langd=1&start=08:00#boka"
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("Location = %q, want %q", got, want)
+	}
+
+	// And that address really does open the form on that time. The fragment
+	// is the browser's business and never reaches the server, so it goes.
+	body := h.do("GET", strings.TrimSuffix(want, "#boka"), nil, member).Body.String()
+	if !strings.Contains(body, "Bekräfta bokningen") {
+		t.Error("the confirmation form should be open")
+	}
+	if !strings.Contains(body, `name="start" value="08:00"`) {
+		t.Error("the form should have the start time filled in")
+	}
+}
+
+// Not free until later: stop, say so, and offer the time instead of taking it.
+func TestQuickBookHaltsAndSuggestsWhenTheTimeIsNotNow(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	// The bike is out 08:00–10:00. With the 15 minute buffer the next free
+	// hour starts at 10:30.
+	h.seed("ellastcykel", h.at(0, 8, 0), 2*time.Hour)
+
+	rec := h.do("GET", "/resurs/ellastcykel/nu", nil, member)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — the member has to be asked first", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Det går inte att boka direkt") {
+		t.Error("the page should say why it stopped")
+	}
+	if !strings.Contains(body, "Närmast lediga tid är idag 10:30") {
+		t.Errorf("the page should suggest the soonest free time:\n%s", body)
+	}
+	if !strings.Contains(body, "start=10:30") {
+		t.Error("the suggestion should be a link that books that time")
+	}
+	// Stopping means stopping: nothing is booked and no form is open yet.
+	if strings.Contains(body, "Bekräfta bokningen") {
+		t.Error("the confirmation form must not be open — the halt would be pointless")
+	}
+	list, err := h.store.InRange(context.Background(), "ellastcykel", h.now, h.now.AddDate(0, 0, 2))
+	if err != nil {
+		t.Fatalf("read bookings: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("the halt booked something: %d bookings, want the seeded 1", len(list))
+	}
+}
+
+// A halt has to land on the day it is talking about, or the suggestion is the
+// only thing on the page that knows about it.
+func TestTheHaltShowsTheDayItSuggests(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	// Today is out altogether; the next free hour is 06:00 tomorrow.
+	h.seed("ellastcykel", h.at(0, 6, 0), 16*time.Hour)
+
+	body := h.do("GET", "/resurs/ellastcykel/nu", nil, member).Body.String()
+	if !strings.Contains(body, "Närmast lediga tid är imorgon 06:00") {
+		t.Errorf("the suggestion should reach into tomorrow:\n%s", body)
+	}
+	if !strings.Contains(body, "Lediga starttider imorgon") {
+		t.Error("the slot list should be on tomorrow, the day being suggested")
+	}
+}
+
+// A guest room is had by the night, so tonight is as immediate as it gets.
+func TestQuickBookOfARoomTakesTonightAndOffersTheNextNight(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	rec := h.do("GET", "/resurs/gastrum-1/nu", nil, member)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303\n%s", rec.Code, rec.Body.String())
+	}
+	want := "/resurs/gastrum-1?manad=" + h.now.Format("2006-01") +
+		"&fran=" + h.date(0) + "&till=" + h.date(1) + "#boka"
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("Location = %q, want %q", got, want)
+	}
+	form := h.do("GET", strings.TrimSuffix(want, "#boka"), nil, member).Body.String()
+	if !strings.Contains(form, `action="/resurs/gastrum-1/boka"`) {
+		t.Error("the form should be open on tonight")
+	}
+	if !strings.Contains(form, `name="fran" value="`+h.date(0)+`"`) {
+		t.Error("the form should have tonight's check-in filled in")
+	}
+
+	// With tonight taken, the soonest is tomorrow — and that is a decision the
+	// member gets to make, not one the button makes.
+	h.seed("gastrum-1", h.at(0, 15, 0), 21*time.Hour)
+	rec = h.do("GET", "/resurs/gastrum-1/nu", nil, member)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Närmast lediga tid är imorgon.") {
+		t.Errorf("a room is booked by the night, so no clock time:\n%s", body)
+	}
+	if !strings.Contains(body, "fran="+h.date(1)) {
+		t.Error("the suggestion should be a link that books tomorrow night")
+	}
+	if strings.Contains(body, `action="/resurs/gastrum-1/boka"`) {
+		t.Error("the form must not be open — the halt would be pointless")
+	}
+}
+
+// Nothing free anywhere ahead: there is no time to offer, so say that rather
+// than suggesting a blank.
+func TestQuickBookSaysSoWhenThereIsNothingToOffer(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	// elcykel has no buffer and opens 06:00–22:00. Fill every day the scan
+	// reaches, and a couple past it for good measure.
+	for d := 0; d <= 16; d++ {
+		h.seed("elcykel", h.at(d, 6, 0), 16*time.Hour)
+	}
+
+	rec := h.do("GET", "/resurs/elcykel/nu", nil, member)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Det går inte att boka direkt") {
+		t.Error("the page should still say it stopped")
+	}
+	if !strings.Contains(body, "Ingenting är ledigt inom den närmaste tiden") {
+		t.Errorf("with nothing free, the page should say so:\n%s", body)
+	}
+	if strings.Contains(body, "Närmast lediga tid är") {
+		t.Error("there is no time to suggest, so it must not pretend there is")
+	}
+
+	// The card agrees, and does not offer a button that could only disappoint.
+	index := h.do("GET", "/", nil, member).Body.String()
+	if strings.Contains(index, `href="/resurs/elcykel/nu"`) {
+		t.Error("a card with nothing free should not offer the quick button")
+	}
+}
+
+// On a coarse grid the next slot can start soon in clock terms and still be
+// somebody else's turn first. Skipping over a booked slot is a wait however
+// few minutes it lasts, so the button asks.
+func TestQuickBookCountsASkippedSlotAsAWaitHoweverShort(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	// The laundry runs in two hour blocks from 06:00, so at 08:00 the member's
+	// turn is now — until somebody takes it.
+	if rec := h.do("GET", "/resurs/tvattstugan/nu", nil, member); rec.Code != http.StatusSeeOther {
+		t.Fatalf("with 08:00 free the button should book it, got %d", rec.Code)
+	}
+	h.seed("tvattstugan", h.at(0, 8, 0), 2*time.Hour)
+
+	// 10:00 is only two hours out — one step — but it is not this member's
+	// turn any more, and the old rule waved that through.
+	rec := h.do("GET", "/resurs/tvattstugan/nu", nil, member)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — 10:00 is a wait, not now", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "Närmast lediga tid är idag 10:00") {
+		t.Errorf("the page should offer 10:00 rather than booking it:\n%s", body)
+	}
+}
+
+// The quick button is behind the password like everything else, and it does
+// not invent resources.
+func TestQuickBookIsGuardedLikeTheRestOfTheSite(t *testing.T) {
+	h := newHarness(t)
+	rec := h.do("GET", "/resurs/ellastcykel/nu", nil, nil)
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/login") {
+		t.Errorf("without a session = %d to %q, want a redirect to /login", rec.Code, rec.Header().Get("Location"))
+	}
+	member := h.login("husets-losenord")
+	for _, path := range []string{"/resurs/finns-inte/nu", "/resurs/avstangd/nu"} {
+		if rec := h.do("GET", path, nil, member); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
 	}
 }

@@ -161,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /{$}", s.member(s.handleIndex))
 	mux.Handle("GET /resurs/{id}", s.member(s.handleResource))
 	mux.Handle("GET /resurs/{id}/bokningar", s.member(s.handleResourceUpcoming))
+	mux.Handle("GET /resurs/{id}/nu", s.member(s.handleQuickBook))
 	mux.Handle("POST /resurs/{id}/boka", s.member(s.handleCreateBooking))
 	mux.Handle("GET /bokning/{id}", s.member(s.handleBooking))
 	mux.Handle("GET /bokning/{id}/kalender.ics", s.member(s.handleBookingICS))
