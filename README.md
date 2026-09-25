@@ -170,7 +170,7 @@ categories:
   - id: cyklar
     name: Cyklar
     emoji: 🚲
-    description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
+    description: Husets gemensamma cyklar. Ladda batteriet efter din tur.
     link: https://chat.rudbeckia.nu/rudbeckia/channels/cykelpoolen
     link_text: "#cykelpoolen i Mattermost"
 ```

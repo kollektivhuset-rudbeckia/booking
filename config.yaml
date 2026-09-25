@@ -26,8 +26,8 @@ categories:
     name: Cyklar
     name_en: Bikes
     emoji: 🚲
-    description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
-    description_en: The house's shared bikes. Please charge the battery after your turn.
+    description: Husets gemensamma cyklar. Ladda batteriet efter din tur.
+    description_en: The house's shared bikes. Charge the battery after your turn.
     link: https://chat.rudbeckia.nu/rudbeckia/channels/cykelpoolen
     link_text: "#cykelpoolen i Mattermost"
     link_text_en: "#cykelpoolen in Mattermost"
@@ -59,12 +59,15 @@ resources:
       Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
       batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
       klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
-      Meddela i #cykelpoolen i Mattermost om något gått sönder.
+      Lämnar du cykeln någonstans under turen måste du koppla ur batteriet och
+      ta det med dig. Meddela i #cykelpoolen i Mattermost om något gått sönder.
     instructions_en: >-
       The keys hang on the shelf in the cleaning room next to the lift, together
       with the batteries. Put the bike back in the bike room on the ground floor
       when you are done, and leave the key and the battery charging in the
-      cleaning room. Say so in #cykelpoolen in Mattermost if something broke.
+      cleaning room. If you leave the bike anywhere during your turn, you must
+      unplug the battery and take it with you. Say so in #cykelpoolen in
+      Mattermost if something broke.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
@@ -97,12 +100,15 @@ resources:
       Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
       batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
       klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
-      Meddela i #cykelpoolen i Mattermost om något gått sönder.
+      Lämnar du cykeln någonstans under turen måste du koppla ur batteriet och
+      ta det med dig. Meddela i #cykelpoolen i Mattermost om något gått sönder.
     instructions_en: >-
       The keys hang on the shelf in the cleaning room next to the lift, together
       with the batteries. Put the bike back in the bike room on the ground floor
       when you are done, and leave the key and the battery charging in the
-      cleaning room. Say so in #cykelpoolen in Mattermost if something broke.
+      cleaning room. If you leave the bike anywhere during your turn, you must
+      unplug the battery and take it with you. Say so in #cykelpoolen in
+      Mattermost if something broke.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
