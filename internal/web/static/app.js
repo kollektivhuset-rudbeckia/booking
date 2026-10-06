@@ -65,6 +65,9 @@
 			// them back to a default, which would jump around mid-typing.
 			if (!nextFeedback.querySelector('.alert')) {
 				slotArea.innerHTML = nextSlots.innerHTML;
+				var track = document.getElementById('timeline-track');
+				var nextTrack = doc.getElementById('timeline-track');
+				if (track && nextTrack) { track.innerHTML = nextTrack.innerHTML; }
 				history.replaceState(null, '', url);
 			}
 		};

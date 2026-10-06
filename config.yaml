@@ -72,7 +72,7 @@ resources:
     booking:
       mode: hours
       # Snabbvalen som visas som knappar.
-      durations: [1, 2, 4, 8]
+      durations: [0.5, 1, 2, 4, 8]
       # Låter den som bokar skriva in en egen längd i stället, t.ex. 1,5 eller 6.
       custom_duration: true
       min_duration_minutes: 30
@@ -84,7 +84,7 @@ resources:
       open_to: "22:00"
       max_advance_days: 30
       min_notice_minutes: 0
-      max_active_per_user: 2
+      max_active_per_user: 10
       max_hours_per_week_per_user: 16
 
   - id: elcykel
@@ -112,7 +112,7 @@ resources:
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
-      durations: [1, 2, 4, 8]
+      durations: [0.5, 1, 2, 4, 8]
       custom_duration: true
       min_duration_minutes: 30
       # Hela öppettiden, 06:00–22:00.
@@ -122,7 +122,7 @@ resources:
       open_from: "06:00"
       open_to: "22:00"
       max_advance_days: 30
-      max_active_per_user: 3
+      max_active_per_user: 10
       max_hours_per_week_per_user: 16
 
   # # --------------------------------------------------------------- Gästrum --

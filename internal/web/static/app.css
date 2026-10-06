@@ -380,6 +380,16 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
 	background: var(--bg-sunk); opacity: .85;
 }
 .timeline-span.is-mine { background: var(--accent); }
+/* The chosen time: taller than the bar and blinking, so it reads as "this
+   one" rather than as somebody else's booking. It sits outside the bar,
+   whose rounded ends clip anything inside it. */
+.timeline-track { position: relative; }
+.timeline-pick {
+	position: absolute; top: -5px; bottom: -5px; min-width: 4px;
+	background: var(--info-text); border-radius: var(--radius-sm);
+	animation: timeline-blink 1.1s ease-in-out infinite alternate;
+}
+@keyframes timeline-blink { from { opacity: 1; } to { opacity: .25; } }
 .timeline-scale {
 	display: flex; justify-content: space-between; font-size: .72rem;
 	color: var(--text-faint); margin-top: .3rem;
@@ -582,6 +592,7 @@ label { font-size: .85rem; }
 
 @media (prefers-reduced-motion: reduce) {
 	* { transition: none !important; scroll-behavior: auto !important; }
+	.timeline-pick { animation: none; }
 }
 
 /* Days that are simply out of reach — past, or beyond the booking horizon. */

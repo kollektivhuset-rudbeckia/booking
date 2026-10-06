@@ -31,6 +31,9 @@ type hourPage struct {
 	// Param is the current length as it appears in links, in hours.
 	Param    string
 	Selected *booking.Slot
+	// Pick places the chosen slot on the timeline, so the member sees where
+	// in the day it falls before confirming.
+	Pick *booking.Span
 
 	// AllowCustom turns on the "own length" choice beside the preset buttons.
 	AllowCustom bool
@@ -319,11 +322,31 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 			slot := page.Day.Slots[i]
 			if i18n.Clock(slot.Start.In(loc)) == raw && slot.Available {
 				page.Selected = &page.Day.Slots[i]
+				page.Pick = timelineSpan(page.Day, slot.Start, slot.End)
 				break
 			}
 		}
 	}
 	return page, nil
+}
+
+// timelineSpan positions a stretch of time on a day's opening-hours bar, or
+// returns nil if none of it falls inside them.
+func timelineSpan(day booking.DayView, start, end time.Time) *booking.Span {
+	total := day.OpenTo.Sub(day.OpenFrom).Seconds()
+	if start.Before(day.OpenFrom) {
+		start = day.OpenFrom
+	}
+	if end.After(day.OpenTo) {
+		end = day.OpenTo
+	}
+	if total <= 0 || !end.After(start) {
+		return nil
+	}
+	return &booking.Span{
+		OffsetPct: start.Sub(day.OpenFrom).Seconds() / total * 100,
+		WidthPct:  end.Sub(start).Seconds() / total * 100,
+	}
 }
 
 func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string, lang i18n.Lang) (*dayPage, error) {

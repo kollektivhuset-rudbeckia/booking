@@ -101,12 +101,17 @@
 	{{end}}
 
 	<div class="timeline" aria-hidden="true">
-		<div class="timeline-bar">
-			{{if gt $h.Day.PastPct 0.0}}<span class="timeline-past" style="width:{{pct $h.Day.PastPct}}"></span>{{end}}
-			{{range $h.Day.Spans}}
-			<span class="timeline-span{{if .Mine}} is-mine{{end}}"
-			      style="left:{{pct .OffsetPct}};width:{{pct .WidthPct}}"></span>
-			{{end}}
+		{{/* The track is what the live length field swaps, so the marker for a
+		     chosen time comes and goes with the times below. */}}
+		<div class="timeline-track" id="timeline-track">
+			<div class="timeline-bar">
+				{{if gt $h.Day.PastPct 0.0}}<span class="timeline-past" style="width:{{pct $h.Day.PastPct}}"></span>{{end}}
+				{{range $h.Day.Spans}}
+				<span class="timeline-span{{if .Mine}} is-mine{{end}}"
+				      style="left:{{pct .OffsetPct}};width:{{pct .WidthPct}}"></span>
+				{{end}}
+			</div>
+			{{with $h.Pick}}<span class="timeline-pick" style="left:{{pct .OffsetPct}};width:{{pct .WidthPct}}"></span>{{end}}
 		</div>
 		<div class="timeline-scale">
 			<span>{{clock (local $h.Day.OpenFrom)}}</span>

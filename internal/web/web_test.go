@@ -1267,3 +1267,21 @@ func TestQuickBookIsGuardedLikeTheRestOfTheSite(t *testing.T) {
 		}
 	}
 }
+
+// Picking a time marks it on the timeline, where it starts and for how long.
+func TestTheChosenTimeIsMarkedOnTheTimeline(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	base := "/resurs/ellastcykel?datum=" + h.date(1) + "&langd=2"
+
+	if body := h.do("GET", base, nil, member).Body.String(); strings.Contains(body, "timeline-pick") {
+		t.Error("nothing is chosen yet, so nothing should be marked")
+	}
+
+	// The cargo bike is open 06:00–22:00, so 10:00–12:00 is 4/16 in and 2/16 wide.
+	body := h.do("GET", base+"&start=10:00", nil, member).Body.String()
+	track := between(body, `id="timeline-track"`, `class="timeline-scale"`)
+	if !strings.Contains(track, `class="timeline-pick" style="left:25.0000%;width:12.5000%"`) {
+		t.Errorf("expected 10:00–12:00 marked on the timeline:\n%s", track)
+	}
+}
