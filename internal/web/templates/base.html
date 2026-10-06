@@ -48,6 +48,7 @@
 		<nav class="topnav" aria-label="{{t "layout.menu"}}">
 			<a href="/" {{if eq .Path "/"}}aria-current="page"{{end}}>{{t "nav.book"}}</a>
 			<a href="/mina" {{if eq .Path "/mina"}}aria-current="page"{{end}}>{{t "nav.mine"}}</a>
+			<a href="/statistik" {{if eq .Path "/statistik"}}aria-current="page"{{end}}>{{t "nav.stats"}}</a>
 			{{if .Role.Admin}}<a href="/admin" {{if hasPrefix .Path "/admin"}}aria-current="page"{{end}}>{{t "nav.admin"}}</a>{{end}}
 			{{if .Site.HomeURL}}<a href="{{.Site.HomeURL}}" class="external">Rudbeckia.nu</a>{{end}}
 		</nav>

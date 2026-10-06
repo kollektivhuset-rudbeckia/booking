@@ -60,6 +60,7 @@ type Server struct {
 var pages = []string{
 	"index.html", "login.html", "error.html", "booking.html", "mine.html",
 	"admin.html", "resource_hours.html", "resource_days.html", "upcoming.html",
+	"stats.html",
 }
 
 // layouts are included in every page set.
@@ -168,6 +169,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /bokning/{id}/avboka", s.member(s.handleCancel))
 	mux.Handle("GET /mina", s.member(s.handleMyBookings))
 	mux.Handle("GET /medlemmar", s.member(s.handleMemberSearch))
+	mux.Handle("GET /statistik", s.member(s.handleStats))
 	mux.Handle("GET /kalender/{id}/flode.ics", s.member(s.handleResourceFeed))
 
 	mux.Handle("GET /admin", s.admin(s.handleAdmin))

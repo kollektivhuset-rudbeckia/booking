@@ -1,0 +1,115 @@
+{{define "content"}}
+{{$p := .Data}}
+<header class="resource-head">
+	<h1>{{t "stats.title"}}</h1>
+	<p class="lede">{{t "stats.lede"}}</p>
+</header>
+
+{{if not $p.Bookings}}
+<section class="panel">
+	<p class="empty">{{t "stats.empty"}} <a href="/">{{t "stats.empty.cta"}}</a></p>
+</section>
+{{else}}
+<div class="stats">
+	<div class="stat"><strong>{{$p.Bookings}}</strong><span>{{t "stats.bookings"}}</span></div>
+	<div class="stat"><strong>{{printf "%.0f" $p.Hours}}</strong><span>{{t "stats.hours"}}</span></div>
+	{{if $p.Nights}}<div class="stat"><strong>{{$p.Nights}}</strong><span>{{t "stats.nights"}}</span></div>{{end}}
+	<div class="stat"><strong>{{$p.Members}}</strong><span>{{t "stats.members"}}</span></div>
+	<div class="stat"><strong>{{$p.CancelRate}} %</strong><span>{{t "stats.cancelrate"}}</span></div>
+</div>
+
+<div class="stats-grid">
+	<section class="panel">
+		<div class="panel-head">
+			<h2>{{t "stats.leaders"}}</h2>
+			{{if gt $p.Members (len $p.Leaders)}}<span class="muted small">{{t "stats.leaders.hint" (len $p.Leaders)}}</span>{{end}}
+		</div>
+		<ol class="leaderboard">
+			{{range $p.Leaders}}
+			<li>
+				<span class="leader-rank">{{with .Medal}}<span aria-hidden="true">{{.}}</span>{{end}}<span{{if .Medal}} class="visually-hidden"{{end}}>{{.Rank}}.</span></span>
+				<span class="leader-who">
+					<strong>{{.Name}}</strong>
+					<small>{{with .Favourite.Emoji}}{{.}} {{end}}{{t "stats.favourite" (resName .Favourite)}}</small>
+				</span>
+				<span class="leader-count">
+					{{count "booking" .Count}}
+					<small>{{if .Hours}}{{printf "%.0f" .Hours}} h{{end}}{{if and .Hours .Nights}} · {{end}}{{if .Nights}}{{nights .Nights}}{{end}}</small>
+				</span>
+			</li>
+			{{end}}
+		</ol>
+	</section>
+
+	<section class="panel">
+		<div class="panel-head"><h2>{{t "stats.regulars"}}</h2></div>
+		{{if $p.Regulars}}
+		<p class="muted small">{{t "stats.regulars.lede" $p.RegularOver}}</p>
+		<ul class="regulars">
+			{{range $p.Regulars}}<li><span aria-hidden="true">⭐</span> {{.Name}} <span class="muted">{{.Count}}</span></li>{{end}}
+		</ul>
+		{{else}}
+		<p class="empty">{{t "stats.regulars.none" $p.RegularOver}}</p>
+		{{end}}
+	</section>
+</div>
+
+{{with $p.Facts}}
+<section class="panel">
+	<div class="panel-head"><h2>{{t "stats.facts"}}</h2></div>
+	<ul class="trivia">
+		{{range .}}<li><span class="fact-emoji" aria-hidden="true">{{.Emoji}}</span> {{.Text}}</li>{{end}}
+	</ul>
+</section>
+{{end}}
+
+<div class="stats-grid">
+	<section class="panel">
+		<div class="panel-head"><h2>{{t "stats.resources"}}</h2></div>
+		<ul class="hbars">
+			{{range $p.Resources}}
+			<li{{if .Top}} class="is-top"{{end}}>
+				<span class="hbar-label">{{with .Emoji}}{{.}} {{end}}{{.Label}}</span>
+				<span class="hbar-track"><span class="hbar-fill" style="width: {{pct .Pct}}"></span></span>
+				<span class="hbar-count">{{.Count}}</span>
+			</li>
+			{{end}}
+		</ul>
+	</section>
+
+	<section class="panel">
+		<div class="panel-head"><h2>{{t "stats.weekdays"}}</h2></div>
+		<ul class="hbars">
+			{{range $p.Weekdays}}
+			<li{{if .Top}} class="is-top"{{end}}>
+				<span class="hbar-label">{{.Label}}</span>
+				<span class="hbar-track"><span class="hbar-fill" style="width: {{pct .Pct}}"></span></span>
+				<span class="hbar-count">{{.Count}}</span>
+			</li>
+			{{end}}
+		</ul>
+	</section>
+</div>
+
+{{with $p.StartHour}}
+<section class="panel">
+	<div class="panel-head">
+		<h2>{{t "stats.starthours"}}</h2>
+		<span class="muted small">{{t "stats.starthours.hint"}}</span>
+	</div>
+	<ul class="columns">
+		{{range .}}
+		<li{{if .Top}} class="is-top"{{end}} title="{{.Label}}: {{.Count}}">
+			<span class="column-count">{{if .Count}}{{.Count}}{{end}}</span>
+			<span class="column-track"><span class="column-fill" style="height: {{pct .Pct}}"></span></span>
+			<span class="column-label">{{.Label}}</span>
+		</li>
+		{{end}}
+	</ul>
+</section>
+{{end}}
+
+<p class="muted small">{{t "stats.counted"}}</p>
+{{end}}
+{{end}}
+{{template "base" .}}
