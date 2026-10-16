@@ -49,6 +49,7 @@ resources:
       open_to: "22:00"
       max_advance_days: 30
       max_active_per_user: 2
+      caretakers: [mikael.ostberg]
   - id: elcykel
     category: cyklar
     name: Elcykeln
@@ -1283,5 +1284,147 @@ func TestTheChosenTimeIsMarkedOnTheTimeline(t *testing.T) {
 	track := between(body, `id="timeline-track"`, `class="timeline-scale"`)
 	if !strings.Contains(track, `class="timeline-pick" style="left:25.0000%;width:12.5000%"`) {
 		t.Errorf("expected 10:00–12:00 marked on the timeline:\n%s", track)
+	}
+}
+
+// bookAs makes a booking through the form as one directory member and returns
+// the session that now remembers them, plus the booking's id.
+func bookAs(h *harness, member []*http.Cookie, username, day, start, length string) ([]*http.Cookie, string) {
+	h.Helper()
+	form := url.Values{
+		"datum": {day}, "start": {start}, "langd": {length},
+		"medlem": {username}, "remember": {"1"},
+	}
+	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
+	if rec.Code != http.StatusSeeOther {
+		h.Fatalf("booking as %s = %d, want a redirect. Body:\n%s", username, rec.Code, rec.Body.String())
+	}
+	loc := rec.Header().Get("Location")
+	id := strings.TrimSuffix(strings.TrimPrefix(loc, "/bokning/"), "?ny=1")
+	return append(member, rec.Result().Cookies()...), id
+}
+
+func TestCaretakerCanBlockDaysAndBumpBookings(t *testing.T) {
+	h := newHarness(t)
+
+	// Anna has a booking on Thursday; Mikael, the caretaker, is remembered on
+	// his own device from an earlier booking.
+	anna, annaID := bookAs(h, h.login("husets-losenord"), "anna.andersson", h.date(3), "10:00", "2")
+	caretaker, _ := bookAs(h, h.login("husets-losenord"), "mikael.ostberg", h.date(1), "08:00", "1")
+	h.chat.waitForDM(t, 2) // both confirmations, so the bump DM is the third
+
+	// Only caretakers reach the page; nobody else sees the link either.
+	if rec := h.do("GET", "/resurs/ellastcykel/sparra", nil, anna); rec.Code != http.StatusForbidden {
+		t.Errorf("anna at the block page = %d, want 403", rec.Code)
+	}
+	if page := h.do("GET", "/resurs/ellastcykel", nil, anna).Body.String(); strings.Contains(page, "/sparra") {
+		t.Error("anna should not see the block link")
+	}
+	if page := h.do("GET", "/resurs/ellastcykel", nil, caretaker).Body.String(); !strings.Contains(page, "/resurs/ellastcykel/sparra") {
+		t.Error("the caretaker should see the block link")
+	}
+	if rec := h.do("GET", "/resurs/ellastcykel/sparra", nil, caretaker); rec.Code != http.StatusOK {
+		t.Fatalf("the caretaker at the block page = %d, want 200", rec.Code)
+	}
+
+	// Blocking over Anna's day refuses, names her booking and offers to clear it.
+	form := url.Values{
+		"medlem": {"mikael.ostberg"}, "fran": {h.date(2)}, "till": {h.date(4)},
+		"orsak": {"Punktering, väntar på ny slang"},
+	}
+	rec := h.do("POST", "/resurs/ellastcykel/sparra", form, caretaker)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("block over a booking = %d, want 422. Body:\n%s", rec.Code, rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, annaID) || !strings.Contains(body, `name="avboka"`) {
+		t.Error("the refusal should list Anna's booking and offer to cancel it")
+	}
+
+	// Ticking the box clears her out and tells her why.
+	form.Set("avboka", "1")
+	rec = h.do("POST", "/resurs/ellastcykel/sparra", form, caretaker)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("block with take-over = %d, want a redirect. Body:\n%s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/resurs/ellastcykel/sparra?ny=1&avbokade=1" {
+		t.Errorf("redirected to %q", loc)
+	}
+	dm := h.chat.waitForDM(t, 3)
+	if dm.Username != "anna.andersson" || !strings.Contains(dm.Message, "avbokad") || !strings.Contains(dm.Message, "Punktering") {
+		t.Errorf("anna's bump DM is wrong: %+v", dm)
+	}
+	page := h.do("GET", "/resurs/ellastcykel/sparra?ny=1&avbokade=1", nil, caretaker).Body.String()
+	if !strings.Contains(page, "1 bokning avbokades") || !strings.Contains(page, "Punktering") {
+		t.Error("the block page should confirm the block and the one cancelled booking")
+	}
+
+	// The days are gone for everybody, labelled as maintenance, and the block
+	// is listed with everyone's coming bookings and in the feed.
+	grid := h.do("GET", "/resurs/ellastcykel?datum="+h.date(3)+"&langd=1", nil, anna).Body.String()
+	if strings.Contains(grid, ">10:00<") || !strings.Contains(grid, "Underhåll") {
+		t.Error("a blocked day should offer nothing and say it is maintenance")
+	}
+	if strings.Contains(grid, "Din bokning") {
+		t.Error("the blocked day should no longer show Anna's booking as hers")
+	}
+	upcoming := h.do("GET", "/resurs/ellastcykel/bokningar", nil, anna).Body.String()
+	if !strings.Contains(upcoming, "Punktering") || !strings.Contains(upcoming, "3 dagar") {
+		t.Error("the coming-bookings list should show the three-day block with its reason")
+	}
+	feed := h.do("GET", "/kalender/ellastcykel/flode.ics", nil, anna).Body.String()
+	if !strings.Contains(feed, "Underhåll: Punktering") {
+		t.Error("the calendar feed should carry the block")
+	}
+	// The statistics leave it out.
+	if stats := h.do("GET", "/statistik", nil, anna).Body.String(); strings.Contains(stats, "Punktering") {
+		t.Error("a block should not count as a booking in the statistics")
+	}
+
+	// A fellow caretaker lifts it without the token, and the day is free again.
+	blockID := between(page, `href="/bokning/`, `"`)
+	if blockID == "" {
+		t.Fatal("no block listed on the block page")
+	}
+	if rec := h.do("POST", "/bokning/"+blockID+"/avboka", nil, anna); rec.Code != http.StatusForbidden {
+		t.Errorf("anna lifting the block = %d, want 403", rec.Code)
+	}
+	rec = h.do("POST", "/bokning/"+blockID+"/avboka", nil, caretaker)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/resurs/ellastcykel/sparra?havd=1" {
+		t.Fatalf("lifting the block = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	grid = h.do("GET", "/resurs/ellastcykel?datum="+h.date(3)+"&langd=1", nil, anna).Body.String()
+	if !strings.Contains(grid, ">10:00<") {
+		t.Error("the day should be bookable again once the block is lifted")
+	}
+	// Lifting a block is not a cancellation anybody is told about.
+	time.Sleep(50 * time.Millisecond)
+	if n := len(h.chat.messages()); n != 3 {
+		t.Errorf("%d direct messages sent, want 3 (two confirmations and one bump)", n)
+	}
+}
+
+func TestBlockFormChecksItsFields(t *testing.T) {
+	h := newHarness(t)
+	caretaker, _ := bookAs(h, h.login("husets-losenord"), "mikael.ostberg", h.date(1), "08:00", "1")
+
+	rec := h.do("POST", "/resurs/ellastcykel/sparra", url.Values{
+		"medlem": {"mikael.ostberg"}, "fran": {h.date(2)}, "till": {h.date(1)}, "orsak": {""},
+	}, caretaker)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("bad block = %d, want 422", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Skriv varför", "Sista dagen", `value="` + h.date(2) + `"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the re-rendered form is missing %q", want)
+		}
+	}
+	// Naming somebody who is not a caretaker is refused even from a
+	// caretaker's device.
+	rec = h.do("POST", "/resurs/ellastcykel/sparra", url.Values{
+		"medlem": {"anna.andersson"}, "fran": {h.date(2)}, "till": {h.date(2)}, "orsak": {"Borta"},
+	}, caretaker)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "ansvarar") {
+		t.Errorf("block in a non-caretaker's name = %d, want 422 naming the rule", rec.Code)
 	}
 }

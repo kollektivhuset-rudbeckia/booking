@@ -161,6 +161,7 @@ func (s *Server) renderResource(w http.ResponseWriter, r *http.Request, v *view,
 		"Rules":    summarize(v.Lang, res),
 		"Errors":   nil,
 		"Form":     formFromIdentity(v.Ident),
+		"CanBlock": s.canBlock(v, res),
 	}
 	for key, val := range extra {
 		data[key] = val

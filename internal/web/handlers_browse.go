@@ -237,6 +237,9 @@ type bookingRow struct {
 	End      time.Time
 	Duration string
 	Nights   int
+	// Days is how many whole days a maintenance block covers; zero for a
+	// booking.
+	Days     int
 	Upcoming bool
 	Ongoing  bool
 }
@@ -259,9 +262,12 @@ func (s *Server) rows(lang i18n.Lang, list []store.Booking, loc *time.Location) 
 			Upcoming: b.Start.After(now),
 			Ongoing:  !b.Start.After(now) && b.End.After(now),
 		}
-		if b.Mode == string(config.ModeDays) {
-			sd := time.Date(row.Start.Year(), row.Start.Month(), row.Start.Day(), 0, 0, 0, 0, loc)
-			ed := time.Date(row.End.Year(), row.End.Month(), row.End.Day(), 0, 0, 0, 0, loc)
+		sd := time.Date(row.Start.Year(), row.Start.Month(), row.Start.Day(), 0, 0, 0, 0, loc)
+		ed := time.Date(row.End.Year(), row.End.Month(), row.End.Day(), 0, 0, 0, 0, loc)
+		switch {
+		case b.IsBlock():
+			row.Days = int(ed.Sub(sd).Hours()/24 + 0.5)
+		case b.Mode == string(config.ModeDays):
 			row.Nights = int(ed.Sub(sd).Hours()/24 + 0.5)
 		}
 		out = append(out, row)

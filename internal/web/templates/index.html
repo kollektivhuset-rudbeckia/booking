@@ -16,6 +16,7 @@
 			<a href="/bokning/{{.Booking.ID}}">
 				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{resName .Resource}}</span>
 				<strong>{{titleCase (interval .Start .End)}}</strong>
+				{{if .Booking.IsBlock}}<span class="badge badge-block">{{t "block.label"}}</span>{{end}}
 				{{if .Ongoing}}<span class="badge badge-live">{{t "mine.ongoing"}}</span>{{end}}
 			</a>
 		</li>

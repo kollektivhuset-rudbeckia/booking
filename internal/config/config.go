@@ -176,8 +176,34 @@ type Rules struct {
 	MaxActivePerUser int `yaml:"max_active_per_user"`
 	// MaxHoursPerWeekPerUser caps booked hours in a rolling week. 0 = no cap.
 	MaxHoursPerWeekPerUser float64 `yaml:"max_hours_per_week_per_user"`
+	// Caretakers lists the Mattermost usernames of the people who look after
+	// the thing. Neither per-member cap applies to them, and they may block
+	// off whole days for maintenance. Everything else — opening hours,
+	// lengths, the buffer — still applies to their ordinary bookings.
+	Caretakers []string `yaml:"caretakers"`
 	// RequireApproval is reserved for a future moderation step.
 	RequireApproval bool `yaml:"require_approval"`
+}
+
+// Caretaker reports whether a Mattermost username looks after this resource:
+// exempt from the per-member caps, and allowed to block it off for maintenance.
+func (ru Rules) Caretaker(username string) bool {
+	username = member(username)
+	if username == "" {
+		return false
+	}
+	for _, u := range ru.Caretakers {
+		if u == username {
+			return true
+		}
+	}
+	return false
+}
+
+// member normalizes a Mattermost username the way the store keys bookings:
+// lower case, trimmed, without a leading @.
+func member(username string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
 }
 
 // Runtime holds the settings that come from the environment rather than YAML,
@@ -377,6 +403,12 @@ func normalizeRules(r *Resource) error {
 		}
 	default:
 		return fmt.Errorf("unknown booking mode %q (use %q or %q)", ru.Mode, ModeHours, ModeDays)
+	}
+	for i, u := range ru.Caretakers {
+		ru.Caretakers[i] = member(u)
+		if ru.Caretakers[i] == "" {
+			return fmt.Errorf("caretakers: entry %d is empty", i+1)
+		}
 	}
 	if ru.MaxAdvanceDays <= 0 {
 		ru.MaxAdvanceDays = 90

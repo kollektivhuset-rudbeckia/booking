@@ -82,6 +82,10 @@ func (s *Server) notifyCreated(b store.Booking, res config.Resource) {
 // notifyCancelled tells the member their booking is gone and hands their
 // calendar a cancellation event.
 func (s *Server) notifyCancelled(b store.Booking, res config.Resource) {
+	if b.IsBlock() {
+		// A lifted block is nobody's lost booking; the caretaker did it.
+		return
+	}
 	loc := s.cfg.Location()
 	lang := s.bookingLang(b)
 	l := string(lang)
@@ -93,6 +97,27 @@ func (s *Server) notifyCancelled(b store.Booking, res config.Resource) {
 		i18n.T(lang, "dm.nowfree", s.rt.BaseURL+"/resurs/"+res.ID) + "\n"
 
 	s.dm(b, "cancellation", msg, mattermost.File{
+		Filename: ical.Filename(res.ID, b.Start.In(loc)),
+		Data:     ical.Calendar(res.NameFor(l), []ical.Event{ev}),
+	})
+}
+
+// notifyBumped tells a member their booking was cancelled by a maintenance
+// block, with the reason, so "the bike is gone" does not arrive as a bare
+// cancellation.
+func (s *Server) notifyBumped(b store.Booking, res config.Resource, block store.Booking) {
+	loc := s.cfg.Location()
+	lang := s.bookingLang(b)
+	l := string(lang)
+	when := i18n.Interval(lang, b.Start.In(loc), b.End.In(loc))
+	ev := s.event(b, res, lang)
+	ev.Cancelled = true
+
+	msg := i18n.T(lang, "dm.bumped", firstName(b.Name), res.NameFor(l), cell(when),
+		i18n.Interval(lang, block.Start.In(loc), block.End.In(loc).Add(-time.Minute)), cell(block.Note)) + "\n\n" +
+		i18n.T(lang, "dm.bumped.rebook", s.rt.BaseURL+"/resurs/"+res.ID) + "\n"
+
+	s.dm(b, "bump", msg, mattermost.File{
 		Filename: ical.Filename(res.ID, b.Start.In(loc)),
 		Data:     ical.Calendar(res.NameFor(l), []ical.Event{ev}),
 	})

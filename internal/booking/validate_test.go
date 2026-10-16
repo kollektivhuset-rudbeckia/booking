@@ -262,3 +262,106 @@ func TestValidateRejectsDisabledResource(t *testing.T) {
 		t.Errorf("a disabled resource should be refused, got %q", messages(errs))
 	}
 }
+
+func TestValidateSkipsCapsForCaretakers(t *testing.T) {
+	loc := stockholm(t)
+	st := newStore(t)
+	now := at(loc, "2026-05-01 08:00")
+	res := bike()
+	res.Rules.MaxActivePerUser = 1
+	res.Rules.MaxHoursPerWeekPerUser = 6
+	res.Rules.Caretakers = []string{"simm"}
+
+	// One upcoming booking of four hours: enough to trip both caps for an
+	// ordinary member on the next attempt.
+	seed := store.Booking{
+		ID: "a", ResourceID: res.ID,
+		Start:      at(loc, "2026-05-03 10:00"),
+		End:        at(loc, "2026-05-03 14:00"),
+		MMUsername: "simm", Name: "Simon",
+		Status: store.StatusConfirmed, CreatedAt: now,
+	}
+	if err := st.Create(context.Background(), seed, seed.Start, seed.End); err != nil {
+		t.Fatalf("seed booking: %v", err)
+	}
+
+	_, _, errs := Validate(context.Background(), st, Request{
+		Resource: res,
+		Start:    at(loc, "2026-05-04 10:00"),
+		End:      at(loc, "2026-05-04 14:00"),
+		Name:     "Simon", MMUsername: "@Simm",
+	}, now, loc, i18n.SV)
+	if len(errs) != 0 {
+		t.Errorf("a caretaker should pass both caps, got %q", messages(errs))
+	}
+
+	// The exemption is per name: everyone else is still capped.
+	other := store.Booking{
+		ID: "b", ResourceID: res.ID,
+		Start:      at(loc, "2026-05-05 10:00"),
+		End:        at(loc, "2026-05-05 12:00"),
+		MMUsername: "anna.andersson", Name: "Anna",
+		Status: store.StatusConfirmed, CreatedAt: now,
+	}
+	if err := st.Create(context.Background(), other, other.Start, other.End); err != nil {
+		t.Fatalf("seed booking: %v", err)
+	}
+	_, _, errs = Validate(context.Background(), st, Request{
+		Resource: res,
+		Start:    at(loc, "2026-05-06 10:00"),
+		End:      at(loc, "2026-05-06 12:00"),
+		Name:     "Anna", MMUsername: "anna.andersson",
+	}, now, loc, i18n.SV)
+	if !strings.Contains(messages(errs), "aktiva bokningar") {
+		t.Errorf("expected the per-member cap to still fire for others, got %q", messages(errs))
+	}
+}
+
+func TestValidateBlockCoversWholeDaysAndOnlyForCaretakers(t *testing.T) {
+	loc := stockholm(t)
+	now := at(loc, "2026-05-01 08:00")
+	res := bike()
+	res.Rules.Caretakers = []string{"simm"}
+	day := func(s string) time.Time { return at(loc, s+" 00:00") }
+
+	start, end, errs := ValidateBlock(BlockRequest{
+		Resource: res, From: day("2026-05-03"), To: day("2026-05-04"),
+		Reason: "Punktering", MMUsername: "@Simm",
+	}, now, loc, i18n.SV)
+	if len(errs) != 0 {
+		t.Fatalf("a caretaker's two-day block should pass, got %q", messages(errs))
+	}
+	if !start.Equal(day("2026-05-03")) || !end.Equal(day("2026-05-05")) {
+		t.Errorf("block = %v – %v, want midnight 3 May to midnight 5 May", start, end)
+	}
+
+	cases := []struct {
+		name string
+		req  BlockRequest
+		want string
+	}{
+		{"not a caretaker", BlockRequest{Resource: res, From: day("2026-05-03"), To: day("2026-05-03"), Reason: "x", MMUsername: "anna.andersson"}, "ansvarar"},
+		{"no reason", BlockRequest{Resource: res, From: day("2026-05-03"), To: day("2026-05-03"), Reason: "  ", MMUsername: "simm"}, "varför"},
+		{"no dates", BlockRequest{Resource: res, Reason: "x", MMUsername: "simm"}, "första och sista"},
+		{"ends before it starts", BlockRequest{Resource: res, From: day("2026-05-04"), To: day("2026-05-03"), Reason: "x", MMUsername: "simm"}, "Sista dagen"},
+		{"in the past", BlockRequest{Resource: res, From: day("2026-04-30"), To: day("2026-05-03"), Reason: "x", MMUsername: "simm"}, "passerat"},
+		{"a year and a day", BlockRequest{Resource: res, From: day("2026-05-03"), To: day("2027-05-03"), Reason: "x", MMUsername: "simm"}, "högst"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, errs := ValidateBlock(tc.req, now, loc, i18n.SV)
+			if !strings.Contains(messages(errs), tc.want) {
+				t.Errorf("errors %q do not mention %q", messages(errs), tc.want)
+			}
+		})
+	}
+
+	// The administrator may block on a caretaker's behalf; today is fine.
+	_, _, errs = ValidateBlock(BlockRequest{
+		Resource: res, From: day("2026-05-01"), To: day("2026-05-01"),
+		Reason: "x", MMUsername: "anna.andersson", Admin: true,
+	}, now, loc, i18n.SV)
+	if len(errs) != 0 {
+		t.Errorf("an admin blocking today should pass, got %q", messages(errs))
+	}
+}

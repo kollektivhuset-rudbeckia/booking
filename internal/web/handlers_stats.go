@@ -70,7 +70,8 @@ type fact struct {
 // handleStats shows the house's bookings in numbers. It is open to every
 // member: the names on it are the same ones the coming-bookings list shows.
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request, v *view) {
-	list, err := s.store.Search(r.Context(), store.Filter{Ascending: true})
+	// Maintenance blocks are not anybody's booking and would skew every number.
+	list, err := s.store.Search(r.Context(), store.Filter{Ascending: true, Kind: store.KindBooking})
 	if err != nil {
 		s.log.Error("load stats", "err", err)
 		s.errorPage(w, r, http.StatusInternalServerError, "error.noread", "error.tryagain")

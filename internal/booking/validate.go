@@ -77,8 +77,10 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 		return blockFrom, blockTo, errs
 	}
 
-	// Per-member caps.
-	if ru.MaxActivePerUser > 0 {
+	// Per-member caps. The people who look after the resource are exempt so
+	// they can take it out for service whenever it needs it.
+	unlimited := ru.Caretaker(req.MMUsername)
+	if ru.MaxActivePerUser > 0 && !unlimited {
 		n, err := st.CountActiveForUser(ctx, r.ID, req.MMUsername, now)
 		if err != nil {
 			return blockFrom, blockTo, []Error{{Message: i18n.T(lang, "error.readfailed")}}
@@ -87,7 +89,7 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 			errs = append(errs, Error{Message: i18n.T(lang, "error.toomany", n, name, ru.MaxActivePerUser)})
 		}
 	}
-	if ru.MaxHoursPerWeekPerUser > 0 {
+	if ru.MaxHoursPerWeekPerUser > 0 && !unlimited {
 		weekFrom := req.Start.AddDate(0, 0, -7)
 		weekTo := req.Start.AddDate(0, 0, 7)
 		used, err := st.HoursForUserBetween(ctx, r.ID, req.MMUsername, weekFrom, weekTo)
@@ -267,4 +269,64 @@ func Durations(ds []float64) []time.Duration {
 		out[i] = durationOf(d)
 	}
 	return out
+}
+
+// BlockRequest is a caretaker taking a resource out of service for a run of
+// whole days: the bike is broken, or missing, or away for a service.
+type BlockRequest struct {
+	Resource config.Resource
+	// From and To are local calendar dates, both inclusive.
+	From, To time.Time
+	// Reason is what everyone else reads in place of a booker's name.
+	Reason     string
+	MMUsername string
+	// Admin lets the house administrator block on a caretaker's behalf.
+	Admin bool
+}
+
+// MaxBlockDays bounds a single block. A bike that is gone for longer than
+// this is a configuration matter (enabled: false), not a booking.
+const MaxBlockDays = 365
+
+// BlockRange turns two inclusive local dates into the interval a block
+// occupies: midnight at the start of the first day to midnight after the last.
+// That covers every opening hour and every night whatever the resource's
+// mode, and lines up with how the month calendar counts days.
+func BlockRange(from, to time.Time, loc *time.Location) (time.Time, time.Time) {
+	start := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc)
+	end := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
+	return start, end
+}
+
+// ValidateBlock checks a maintenance block. It is far more lenient than
+// Validate: no opening hours, no lengths, no caps and no booking horizon,
+// because the point is to cover the days the thing cannot be used, not to
+// book it. The returned interval is what must be free, or taken over.
+func ValidateBlock(req BlockRequest, now time.Time, loc *time.Location, lang i18n.Lang) (start, end time.Time, errs []Error) {
+	r := req.Resource
+	if !r.Active() {
+		return start, end, []Error{{Message: i18n.T(lang, "error.notbookable", r.NameFor(string(lang)))}}
+	}
+	if !req.Admin && !r.Rules.Caretaker(req.MMUsername) {
+		errs = append(errs, Error{Field: "member", Message: i18n.T(lang, "block.notcaretaker", r.NameFor(string(lang)))})
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		errs = append(errs, Error{Field: "reason", Message: i18n.T(lang, "block.needreason")})
+	}
+	if req.From.IsZero() || req.To.IsZero() {
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "block.pickdates")})
+		return start, end, errs
+	}
+	start, end = BlockRange(req.From, req.To, loc)
+	today := now.In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	switch {
+	case end.Before(start) || end.Equal(start):
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "block.endfirst")})
+	case start.Before(today):
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "block.past")})
+	case end.After(start.AddDate(0, 0, MaxBlockDays)):
+		errs = append(errs, Error{Field: "time", Message: i18n.T(lang, "block.toolong", i18n.Days(lang, MaxBlockDays))})
+	}
+	return start, end, errs
 }

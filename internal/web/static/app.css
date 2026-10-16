@@ -314,6 +314,7 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
 .badge-free { background: var(--ok-bg); color: var(--ok-text); }
 .badge-busy { background: var(--bg-sunk); color: var(--text-muted); }
 .badge-live { background: var(--info-bg); color: var(--info-text); }
+.badge-block { background: var(--warn-bg); color: var(--warn-text); }
 
 /* ---------- Resource header ---------- */
 .resource-head { margin-bottom: 1.75rem; }
@@ -380,6 +381,9 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
 	background: var(--bg-sunk); opacity: .85;
 }
 .timeline-span.is-mine { background: var(--accent); }
+.timeline-span.is-block {
+	background: repeating-linear-gradient(135deg, var(--warn-text) 0 4px, var(--warn-bg) 4px 8px);
+}
 /* The chosen time: taller than the bar and blinking, so it reads as "this
    one" rather than as somebody else's booking. It sits outside the bar,
    whose rounded ends clip anything inside it. */
@@ -431,6 +435,7 @@ a.cal-day.is-free { background: var(--ok-bg); color: var(--ok-text); border-colo
 a.cal-day.is-free:hover { outline: 2px solid var(--accent); }
 .cal-day.is-taken { background: var(--bg-sunk); color: var(--text-faint); text-decoration: line-through; }
 .cal-day.is-mine { background: var(--accent-soft); color: var(--accent-strong); text-decoration: none; }
+.cal-day.is-block { background: var(--warn-bg); color: var(--warn-text); text-decoration: none; }
 .cal-legend { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-muted); margin: 1rem 0 0; flex-wrap: wrap; }
 .key { width: .8rem; height: .8rem; border-radius: 3px; display: inline-block; margin-left: .6rem; }
 .key:first-child { margin-left: 0; }

@@ -20,6 +20,9 @@
 		{{with $res.InfoURL}}
 		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">{{t "resource.readmore"}}</a>
 		{{end}}
+		{{if .Data.CanBlock}}
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/sparra">{{t "block.link"}}</a>
+		{{end}}
 	</p>
 </header>
 
@@ -107,7 +110,7 @@
 			<div class="timeline-bar">
 				{{if gt $h.Day.PastPct 0.0}}<span class="timeline-past" style="width:{{pct $h.Day.PastPct}}"></span>{{end}}
 				{{range $h.Day.Spans}}
-				<span class="timeline-span{{if .Mine}} is-mine{{end}}"
+				<span class="timeline-span{{if .Mine}} is-mine{{end}}{{if .Block}} is-block{{end}}"
 				      style="left:{{pct .OffsetPct}};width:{{pct .WidthPct}}"></span>
 				{{end}}
 			</div>
@@ -126,7 +129,11 @@
 	</h3>
 
 	{{if eq $h.Day.FreeCount 0}}
-	<p class="empty">{{t "resource.noslots" (duration $h.Duration)}}</p>
+		{{with $h.Day.Block}}
+		<p class="empty"><span class="badge badge-block">{{t "block.label"}}</span> {{.Note}} <span class="muted">· {{t "block.by"}} {{.Name}}</span></p>
+		{{else}}
+		<p class="empty">{{t "resource.noslots" (duration $h.Duration)}}</p>
+		{{end}}
 	{{else}}
 	<div class="slots">
 		{{range $h.Day.Slots}}

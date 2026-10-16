@@ -203,6 +203,7 @@ längd och starttid ur ett rutnät.
     min_notice_minutes: 0          # hur nära inpå man får boka
     max_active_per_user: 2         # samtidiga bokningar per person
     max_hours_per_week_per_user: 16
+    caretakers: [simm]             # ansvariga: inga tak, får spärra dagar
 ```
 
 Med `custom_duration: true` står knapparna kvar som snabbval, och bredvid dem
@@ -232,6 +233,36 @@ in- och utcheckningsdatum i en månadskalender.
     max_advance_days: 90
     max_active_per_user: 2
 ```
+
+### Ansvariga och underhållsspärrar
+
+Den som sköter en sak – laddar batterier, lagar punkteringar – behöver kunna
+ta den ur bruk utan att boka timme för timme. Skriv in deras
+Mattermost-användarnamn under `caretakers` på resursen:
+
+```yaml
+    booking:
+      max_active_per_user: 10
+      max_hours_per_week_per_user: 16
+      caretakers: [simm, gabriel]
+```
+
+De ansvariga slipper de två taken, och på resursens sida får de en länk
+**Spärra för underhåll**. Där väljer de första och sista dagen och skriver en
+orsak, t.ex. *Punktering, väntar på ny slang*. Spärren syns för alla i huset
+som *Underhåll* med orsaken i stället för ett namn: på dagremsan, i listan
+över kommande bokningar och i kalenderflödet. Spärrade dagar går inte att
+boka, och öppettider, längder och bokningshorisont gäller inte spärren – den
+kan sträcka sig upp till ett år fram.
+
+Ligger det redan bokningar på de dagarna säger sidan vilka, och erbjuder en
+kryssruta som avbokar dem och meddelar medlemmarna i Mattermost med orsaken
+som förklaring. Spärren hävs från sin egen sida av vilken som helst av de
+ansvariga, eller av administratören; ingen får något utskick om det.
+
+Sidan känner igen en ansvarig på det Mattermost-konto webbläsaren minns, alltså
+samma sätt som *Mina bokningar* fungerar. Den som aldrig bokat från sin enhet
+gör en bokning med *Kom ihåg mina uppgifter* ikryssat först.
 
 ### Sidans egna inställningar
 
@@ -273,6 +304,7 @@ utgångspunkt när huset vill boka fler saker digitalt.
 | `min_notice_minutes` | båda | hur nära inpå man får boka |
 | `max_active_per_user` | båda | samtidiga bokningar per Mattermost-konto |
 | `max_hours_per_week_per_user` | hours | takt-tak per person, 0 = inget tak |
+| `caretakers` | båda | Mattermost-användarnamn på dem som sköter saken. De slipper de två taken ovan och kan spärra hela dagar för underhåll (se nedan). Allt annat gäller som vanligt |
 
 ---
 

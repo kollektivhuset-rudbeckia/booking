@@ -31,6 +31,8 @@ type Span struct {
 	OffsetPct float64
 	WidthPct  float64
 	Mine      bool
+	// Block marks a maintenance block, drawn differently from a booking.
+	Block bool
 }
 
 // DayView is everything the resource page needs for one day in hour mode.
@@ -44,6 +46,9 @@ type DayView struct {
 	// PastPct is how much of the opening hours has already gone by, so the
 	// timeline can shade it.
 	PastPct float64
+	// Block is the maintenance block covering this day, if there is one, so
+	// the page can say why rather than just that nothing is free.
+	Block *store.Booking
 }
 
 // dayWindow returns the bookable window of a local calendar day.
@@ -102,9 +107,12 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 		default:
 			if b, hit := blocked(s, e, buffer, existing); hit {
 				slot.Available = false
-				if b.MMUsername != "" && me != "" && store.Member(b.MMUsername) == store.Member(me) {
+				switch {
+				case b.IsBlock():
+					slot.Reason = i18n.T(lang, "slot.block")
+				case b.MMUsername != "" && me != "" && store.Member(b.MMUsername) == store.Member(me):
 					slot.Reason = i18n.T(lang, "slot.mine")
-				} else {
+				default:
 					slot.Reason = i18n.T(lang, "slot.taken")
 				}
 			}
@@ -122,7 +130,8 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 			view.PastPct = now.Sub(openFrom).Seconds() / total * 100
 		}
 	}
-	for _, b := range existing {
+	for i := range existing {
+		b := existing[i]
 		if !b.Active() {
 			continue
 		}
@@ -136,11 +145,15 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 		if !e.After(s) {
 			continue
 		}
+		if b.IsBlock() && view.Block == nil {
+			view.Block = &existing[i]
+		}
 		view.Spans = append(view.Spans, Span{
 			Booking:   b,
 			OffsetPct: s.Sub(openFrom).Seconds() / total * 100,
 			WidthPct:  e.Sub(s).Seconds() / total * 100,
-			Mine:      me != "" && store.Member(b.MMUsername) == store.Member(me),
+			Mine:      !b.IsBlock() && me != "" && store.Member(b.MMUsername) == store.Member(me),
+			Block:     b.IsBlock(),
 		})
 	}
 	return view
@@ -197,7 +210,7 @@ func MonthGrid(r config.Resource, anchor time.Time, existing []store.Booking, no
 			if !d.Before(first) && d.Before(last) {
 				cell.Available = false
 				cell.Booking = &existing[j]
-				cell.Mine = me != "" && store.Member(b.MMUsername) == store.Member(me)
+				cell.Mine = !b.IsBlock() && me != "" && store.Member(b.MMUsername) == store.Member(me)
 				break
 			}
 		}

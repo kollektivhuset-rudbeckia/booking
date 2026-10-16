@@ -80,8 +80,8 @@
 						<a href="/bokning/{{.Booking.ID}}">{{isoDate .Start}} {{clock .Start}}</a>
 						<small class="muted">–{{if ne (isoDate .Start) (isoDate .End)}} {{dateShort .End}}{{end}} {{clock .End}}</small>
 					</td>
-					<td>{{if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}</td>
-					<td>{{.Booking.Name}}{{if .Booking.Apartment}}<small class="muted"> {{t "admin.apartmentShort" .Booking.Apartment}}</small>{{end}}</td>
+					<td>{{if .Days}}{{count "day" .Days}}{{else if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}</td>
+					<td>{{if .Booking.IsBlock}}<span class="badge badge-block">{{t "block.label"}}</span> {{.Booking.Note}}<small class="muted"> {{.Booking.Name}}</small>{{else}}{{.Booking.Name}}{{if .Booking.Apartment}}<small class="muted"> {{t "admin.apartmentShort" .Booking.Apartment}}</small>{{end}}{{end}}</td>
 					<td>{{with .Booking.MMUsername}}<strong>@{{.}}</strong>{{else}}<span class="muted">–</span>{{end}}
 						{{with .Booking.Email}}<small class="muted"> {{.}}</small>{{end}}
 						{{with .Booking.Phone}}<small class="muted"> {{.}}</small>{{end}}</td>

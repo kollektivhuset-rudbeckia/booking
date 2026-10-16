@@ -406,3 +406,24 @@ func TestLinkLabelFallsBackToTheAddress(t *testing.T) {
 		t.Errorf("= %q", got)
 	}
 }
+
+func TestCaretakersAreNormalizedLikeMemberNames(t *testing.T) {
+	cfg := mustLoad(t, strings.Replace(minimal, "mode: hours", "mode: hours\n      caretakers: [\"@Simm \", gabriel]", 1))
+	ru := cfg.Resources[0].Rules
+	if got := strings.Join(ru.Caretakers, ","); got != "simm,gabriel" {
+		t.Errorf("caretakers = %q, want simm,gabriel", got)
+	}
+	for _, u := range []string{"simm", "@SIMM", " Gabriel"} {
+		if !ru.Caretaker(u) {
+			t.Errorf("Caretaker(%q) = false, want true", u)
+		}
+	}
+	for _, u := range []string{"", "@", "anna"} {
+		if ru.Caretaker(u) {
+			t.Errorf("Caretaker(%q) = true, want false", u)
+		}
+	}
+	if _, err := Load(write(t, strings.Replace(minimal, "mode: hours", "mode: hours\n      caretakers: [\"@\"]", 1))); err == nil || !strings.Contains(err.Error(), "caretakers") {
+		t.Errorf("an empty name should be refused, got %v", err)
+	}
+}

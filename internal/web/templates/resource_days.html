@@ -18,6 +18,9 @@
 		{{with $res.InfoURL}}
 		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">{{t "resource.readmore"}}</a>
 		{{end}}
+		{{if .Data.CanBlock}}
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/sparra">{{t "block.link"}}</a>
+		{{end}}
 	</p>
 </header>
 
@@ -63,8 +66,8 @@
 						   href="/resurs/{{$res.ID}}?manad={{$d.Month.Format "2006-01"}}&amp;fran={{isoDate .Date}}&amp;till={{isoDate (.Date.AddDate 0 0 1)}}#boka"
 						   title="{{t "resource.freeon" (dateLong .Date)}}">{{.Label}}</a>
 					{{else if .Taken}}
-						<span class="cal-day is-taken{{if .Mine}} is-mine{{end}}"
-						      title="{{t "resource.takenby" .Booking.Name}}">{{.Label}}</span>
+						<span class="cal-day is-taken{{if .Mine}} is-mine{{end}}{{if .Booking.IsBlock}} is-block{{end}}"
+						      title="{{if .Booking.IsBlock}}{{t "resource.blockedfor" .Booking.Note}}{{else}}{{t "resource.takenby" .Booking.Name}}{{end}}">{{.Label}}</span>
 					{{else}}
 						<span class="cal-day is-past" title="{{if .Past}}{{t "slot.past"}}{{else}}{{t "slot.far"}}{{end}}">{{.Label}}</span>
 					{{end}}

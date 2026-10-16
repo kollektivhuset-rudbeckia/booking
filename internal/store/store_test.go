@@ -384,3 +384,72 @@ func TestOpenMigratesADatabaseFromBeforeMattermost(t *testing.T) {
 	}
 	again.Close()
 }
+
+func TestCreateOverCancelsWhatItCoversAndKeepsTheRest(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+
+	inside := sample("inside", base, 2)
+	outside := sample("outside", base.AddDate(0, 0, 3), 2)
+	for _, b := range []Booking{inside, outside} {
+		if err := st.Create(ctx, b, b.Start, b.End); err != nil {
+			t.Fatalf("seed %s: %v", b.ID, err)
+		}
+	}
+
+	block := Booking{
+		ID: "blk", ResourceID: "ellastcykel", Kind: KindBlock,
+		Start: base.Add(-10 * time.Hour), End: base.Add(14 * time.Hour),
+		Mode: "hours", Name: "Simon", MMUsername: "simm", Note: "Punktering",
+		Status: StatusConfirmed, CancelToken: "tok", CreatedAt: base,
+	}
+	// Without the take-over it is an ordinary conflict.
+	if err := st.Create(ctx, block, block.Start, block.End); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Create over a booking = %v, want ErrConflict", err)
+	}
+	now := base.Add(-time.Hour)
+	bumped, err := st.CreateOver(ctx, block, now)
+	if err != nil {
+		t.Fatalf("CreateOver: %v", err)
+	}
+	if len(bumped) != 1 || bumped[0].ID != "inside" || bumped[0].Status != StatusCancelled {
+		t.Fatalf("bumped = %+v, want just the booking inside the block, cancelled", bumped)
+	}
+
+	got, err := st.Get(ctx, "inside")
+	if err != nil || got.Status != StatusCancelled || !got.CancelledAt.Valid || !got.CancelledAt.Time.Equal(now) {
+		t.Errorf("the covered booking should be cancelled at %v, got %+v (err %v)", now, got, err)
+	}
+	if got, _ := st.Get(ctx, "outside"); got.Status != StatusConfirmed {
+		t.Errorf("the booking outside the block should be untouched, got %s", got.Status)
+	}
+	if got, _ := st.Get(ctx, "blk"); !got.IsBlock() || got.Note != "Punktering" {
+		t.Errorf("the block should come back as a block with its reason, got %+v", got)
+	}
+
+	// Blocks are not bookings: neither cap counts them, and the filter can
+	// pick either kind.
+	if n, _ := st.CountActiveForUser(ctx, "ellastcykel", "simm", now); n != 0 {
+		t.Errorf("a block counted towards the active cap: %d", n)
+	}
+	blocks, _ := st.Search(ctx, Filter{Kind: KindBlock})
+	bookings, _ := st.Search(ctx, Filter{Kind: KindBooking, Status: StatusConfirmed})
+	if len(blocks) != 1 || len(bookings) != 1 {
+		t.Errorf("filter by kind: %d blocks, %d confirmed bookings; want 1 and 1", len(blocks), len(bookings))
+	}
+}
+
+func TestRowsFromBeforeTheKindColumnReadAsBookings(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	b := sample("old", time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC), 1)
+	if err := st.Create(ctx, b, b.Start, b.End); err != nil {
+		t.Fatal(err)
+	}
+	// Kind was left empty on the way in, as every caller from before did.
+	got, err := st.Get(ctx, "old")
+	if err != nil || got.Kind != KindBooking || got.IsBlock() {
+		t.Errorf("an unmarked row should read as a booking, got kind %q (err %v)", got.Kind, err)
+	}
+}

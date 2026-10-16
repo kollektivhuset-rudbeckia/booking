@@ -23,6 +23,17 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+// Kind separates an ordinary booking from a maintenance block.
+type Kind string
+
+const (
+	// KindBooking is a member taking the resource for a while.
+	KindBooking Kind = "booking"
+	// KindBlock is a caretaker taking the resource out of service: whole
+	// days, with a reason everyone can read in place of a booker's name.
+	KindBlock Kind = "block"
+)
+
 // Booking is one reservation of one resource.
 type Booking struct {
 	ID         string
@@ -30,8 +41,11 @@ type Booking struct {
 	Start      time.Time
 	End        time.Time
 	Mode       string
-	Name       string
-	Apartment  string
+	// Kind is KindBooking unless this is a maintenance block. An empty value
+	// from before the column existed means a booking.
+	Kind      Kind
+	Name      string
+	Apartment string
 	// MMUsername is the member's Mattermost username, lowercased. It is the
 	// identity every per-member rule counts against.
 	MMUsername string
@@ -57,6 +71,9 @@ type Booking struct {
 // Active reports whether the booking still occupies its slot.
 func (b Booking) Active() bool { return b.Status == StatusConfirmed }
 
+// IsBlock reports whether this is a maintenance block rather than a booking.
+func (b Booking) IsBlock() bool { return b.Kind == KindBlock }
+
 // Store is the persistence handle.
 type Store struct {
 	db *sql.DB
@@ -69,6 +86,7 @@ CREATE TABLE IF NOT EXISTS bookings (
 	start_utc    TEXT NOT NULL,
 	end_utc      TEXT NOT NULL,
 	mode         TEXT NOT NULL DEFAULT 'hours',
+	kind         TEXT NOT NULL DEFAULT 'booking',
 	name         TEXT NOT NULL,
 	apartment    TEXT NOT NULL DEFAULT '',
 	mm_username  TEXT NOT NULL DEFAULT '',
@@ -148,12 +166,16 @@ func migrate(db *sql.DB) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read table info: %w", err)
 	}
-	for _, col := range []string{"mm_username", "mm_user_id", "lang"} {
-		if have[col] {
+	added := []struct{ col, dflt string }{
+		{"mm_username", "''"}, {"mm_user_id", "''"}, {"lang", "''"},
+		{"kind", "'booking'"},
+	}
+	for _, c := range added {
+		if have[c.col] {
 			continue
 		}
-		if _, err := db.Exec(`ALTER TABLE bookings ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add column %s: %w", col, err)
+		if _, err := db.Exec(`ALTER TABLE bookings ADD COLUMN ` + c.col + ` TEXT NOT NULL DEFAULT ` + c.dflt); err != nil {
+			return fmt.Errorf("add column %s: %w", c.col, err)
 		}
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_bookings_member ON bookings (mm_username, start_utc)`); err != nil {
@@ -171,7 +193,7 @@ var ErrConflict = errors.New("the time is already booked")
 // ErrNotFound is returned when a booking id or token does not exist.
 var ErrNotFound = errors.New("no such booking")
 
-const selectCols = `id, resource_id, start_utc, end_utc, mode, name, apartment,
+const selectCols = `id, resource_id, start_utc, end_utc, mode, kind, name, apartment,
 	mm_username, mm_user_id, email, lang, phone, note, status, cancel_token,
 	created_at, cancelled_at, created_ip`
 
@@ -179,7 +201,7 @@ func scan(rows interface{ Scan(...any) error }) (Booking, error) {
 	var b Booking
 	var start, end, created string
 	var cancelled sql.NullString
-	err := rows.Scan(&b.ID, &b.ResourceID, &start, &end, &b.Mode, &b.Name, &b.Apartment,
+	err := rows.Scan(&b.ID, &b.ResourceID, &start, &end, &b.Mode, &b.Kind, &b.Name, &b.Apartment,
 		&b.MMUsername, &b.MMUserID, &b.Email, &b.Lang, &b.Phone, &b.Note, &b.Status,
 		&b.CancelToken, &created, &cancelled, &b.CreatedIP)
 	if err != nil {
@@ -201,6 +223,9 @@ func scan(rows interface{ Scan(...any) error }) (Booking, error) {
 		}
 		b.CancelledAt = sql.NullTime{Time: t, Valid: true}
 	}
+	if b.Kind == "" {
+		b.Kind = KindBooking
+	}
 	return b, nil
 }
 
@@ -211,35 +236,74 @@ func utc(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // The check and the insert share a transaction so two simultaneous requests
 // cannot both win.
 func (s *Store) Create(ctx context.Context, b Booking, blockFrom, blockTo time.Time) error {
+	_, err := s.create(ctx, b, blockFrom, blockTo, false, time.Time{})
+	return err
+}
+
+// CreateOver inserts a maintenance block and cancels every confirmed booking
+// it overlaps, in one transaction, so a caretaker who takes a bike out of
+// service does not have to hunt down each booking first. It returns the
+// bookings it cancelled so the caller can tell their members.
+func (s *Store) CreateOver(ctx context.Context, b Booking, at time.Time) ([]Booking, error) {
+	return s.create(ctx, b, b.Start, b.End, true, at)
+}
+
+func (s *Store) create(ctx context.Context, b Booking, blockFrom, blockTo time.Time, bump bool, at time.Time) ([]Booking, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	var n int
-	err = tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM bookings
+	rows, err := tx.QueryContext(ctx, `
+		SELECT `+selectCols+` FROM bookings
 		WHERE resource_id = ? AND status = ?
-		  AND start_utc < ? AND end_utc > ?`,
-		b.ResourceID, StatusConfirmed, utc(blockTo), utc(blockFrom)).Scan(&n)
+		  AND start_utc < ? AND end_utc > ? ORDER BY start_utc`,
+		b.ResourceID, StatusConfirmed, utc(blockTo), utc(blockFrom))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if n > 0 {
-		return ErrConflict
+	var overlapping []Booking
+	for rows.Next() {
+		o, err := scan(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		overlapping = append(overlapping, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(overlapping) > 0 && !bump {
+		return nil, ErrConflict
+	}
+	for i := range overlapping {
+		if _, err := tx.ExecContext(ctx, `UPDATE bookings SET status = ?, cancelled_at = ? WHERE id = ?`,
+			StatusCancelled, utc(at), overlapping[i].ID); err != nil {
+			return nil, err
+		}
+		overlapping[i].Status = StatusCancelled
+		overlapping[i].CancelledAt = sql.NullTime{Time: at, Valid: true}
 	}
 
+	if b.Kind == "" {
+		b.Kind = KindBooking
+	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings (`+selectCols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.ResourceID, utc(b.Start), utc(b.End), b.Mode, b.Name, b.Apartment,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.ResourceID, utc(b.Start), utc(b.End), b.Mode, b.Kind, b.Name, b.Apartment,
 		Member(b.MMUsername), b.MMUserID, b.Email, b.Lang, b.Phone, b.Note, b.Status,
 		b.CancelToken, utc(b.CreatedAt), nil, b.CreatedIP)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return overlapping, nil
 }
 
 // Get returns a single booking by id.
@@ -292,13 +356,15 @@ func (s *Store) InRange(ctx context.Context, resourceID string, from, to time.Ti
 // Filter describes an arbitrary booking search, used by the admin view.
 type Filter struct {
 	ResourceID string
-	Member     string
-	Query      string
-	From       *time.Time
-	To         *time.Time
-	Status     Status
-	Limit      int
-	Ascending  bool
+	// Kind narrows to bookings or to maintenance blocks; empty means both.
+	Kind      Kind
+	Member    string
+	Query     string
+	From      *time.Time
+	To        *time.Time
+	Status    Status
+	Limit     int
+	Ascending bool
 }
 
 // Search returns bookings matching f.
@@ -312,6 +378,10 @@ func (s *Store) Search(ctx context.Context, f Filter) ([]Booking, error) {
 	if f.Member != "" {
 		where = append(where, "mm_username = ?")
 		args = append(args, Member(f.Member))
+	}
+	if f.Kind != "" {
+		where = append(where, "kind = ?")
+		args = append(args, f.Kind)
 	}
 	if f.Status != "" {
 		where = append(where, "status = ?")
@@ -373,8 +443,8 @@ func (s *Store) CountActiveForUser(ctx context.Context, resourceID, username str
 	var n int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM bookings
-		WHERE resource_id = ? AND mm_username = ? AND status = ? AND end_utc > ?`,
-		resourceID, Member(username), StatusConfirmed, utc(now)).Scan(&n)
+		WHERE resource_id = ? AND mm_username = ? AND status = ? AND kind = ? AND end_utc > ?`,
+		resourceID, Member(username), StatusConfirmed, KindBooking, utc(now)).Scan(&n)
 	return n, err
 }
 
@@ -403,9 +473,9 @@ func (s *Store) HoursForUserBetween(ctx context.Context, resourceID, username st
 // InRangeForUser returns one member's confirmed bookings overlapping a window.
 func (s *Store) InRangeForUser(ctx context.Context, resourceID, username string, from, to time.Time) ([]Booking, error) {
 	return s.query(ctx, `SELECT `+selectCols+` FROM bookings
-		WHERE resource_id = ? AND mm_username = ? AND status = ?
+		WHERE resource_id = ? AND mm_username = ? AND status = ? AND kind = ?
 		  AND start_utc < ? AND end_utc > ? ORDER BY start_utc`,
-		resourceID, Member(username), StatusConfirmed, utc(to), utc(from))
+		resourceID, Member(username), StatusConfirmed, KindBooking, utc(to), utc(from))
 }
 
 // Stats summarises the database for the admin dashboard.

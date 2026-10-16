@@ -95,6 +95,9 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, v *view) {
 	counts := map[string]int{}
 	hours := map[string]float64{}
 	for _, b := range upcoming {
+		if b.IsBlock() {
+			continue
+		}
 		counts[b.ResourceID]++
 		hours[b.ResourceID] += b.End.Sub(b.Start).Hours()
 	}

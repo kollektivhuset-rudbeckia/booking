@@ -86,6 +86,10 @@ resources:
       min_notice_minutes: 0
       max_active_per_user: 10
       max_hours_per_week_per_user: 16
+      # Cykelansvariga (Mattermost-användarnamn). De två taken ovan gäller
+      # inte dem, och de kan spärra hela dagar för underhåll när cykeln är
+      # trasig eller borta.
+      caretakers: [simm, gabriel]
 
   - id: elcykel
     category: cyklar
@@ -124,6 +128,10 @@ resources:
       max_advance_days: 30
       max_active_per_user: 10
       max_hours_per_week_per_user: 16
+      # Cykelansvariga (Mattermost-användarnamn). De två taken ovan gäller
+      # inte dem, och de kan spärra hela dagar för underhåll när cykeln är
+      # trasig eller borta.
+      caretakers: [simm, gabriel]
 
   # # --------------------------------------------------------------- Gästrum --
   # - id: gastrum-1

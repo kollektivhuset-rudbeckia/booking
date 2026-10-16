@@ -36,7 +36,10 @@
 				{{range .Rows}}
 				<li class="agenda-row{{if .Ongoing}} is-now{{end}}">
 					<span class="agenda-time">
-						{{if .Nights}}
+						{{if .Days}}
+							{{t "block.allday"}}
+							<small>{{count "day" .Days}}{{if gt .Days 1}}, {{t "resource.until" (dateShort (.End.AddDate 0 0 -1))}}{{end}}</small>
+						{{else if .Nights}}
 							{{clock .Start}}
 							<small>{{nights .Nights}}, {{t "resource.until" (printf "%s %s" (dateShort .End) (clock .End))}}</small>
 						{{else}}
@@ -45,9 +48,14 @@
 						{{end}}
 					</span>
 					<span class="agenda-who">
+						{{if .Booking.IsBlock}}
+						<strong><span class="badge badge-block">{{t "block.label"}}</span> {{.Booking.Note}}</strong>
+						<small class="agenda-note">{{t "block.by"}} {{.Booking.Name}}</small>
+						{{else}}
 						<strong>{{.Booking.Name}}</strong>{{if .Booking.Apartment}} <span class="muted">{{t "admin.apartmentShort" .Booking.Apartment}}</span>{{end}}
 						{{if .Ongoing}}<span class="badge badge-live">{{t "mine.ongoing"}}</span>{{end}}
 						{{with .Booking.Note}}<small class="agenda-note">{{.}}</small>{{end}}
+						{{end}}
 					</span>
 					{{if $.Role.Admin}}
 					<a class="quiet-link agenda-link" href="/bokning/{{.Booking.ID}}">{{t "show"}}</a>

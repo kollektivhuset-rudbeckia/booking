@@ -203,11 +203,18 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 		s.errorPage(w, r, http.StatusNotFound, "error.nobooking", "error.alreadygone")
 		return
 	}
+	res, ok := s.cfg.Resource(b.ResourceID)
+	if !ok {
+		res = config.Resource{ID: b.ResourceID, Name: b.ResourceID}
+	}
 	token := r.FormValue("token")
 	// A member may cancel with the token from their confirmation, or because
 	// the booking belongs to the Mattermost account this browser remembers.
+	// A block may also be lifted by any of the resource's caretakers: the
+	// one who fixed the bike is not always the one who took it out.
 	own := v.Ident.MMUsername != "" && store.Member(v.Ident.MMUsername) == b.MMUsername
-	if token != b.CancelToken && !own && !v.Role.Admin() {
+	caretaker := b.IsBlock() && res.Rules.Caretaker(v.Ident.MMUsername)
+	if token != b.CancelToken && !own && !caretaker && !v.Role.Admin() {
 		s.errorPage(w, r, http.StatusForbidden, "error.nocancel", "error.nocancel.how")
 		return
 	}
@@ -215,11 +222,12 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 		s.errorPage(w, r, http.StatusConflict, "error.nocancel", "error.nocancel.done")
 		return
 	}
-	res, ok := s.cfg.Resource(b.ResourceID)
-	if !ok {
-		res = config.Resource{ID: b.ResourceID, Name: b.ResourceID}
-	}
 	b.Status = store.StatusCancelled
+	if b.IsBlock() {
+		s.log.Info("block lifted", "id", b.ID, "resource", b.ResourceID)
+		http.Redirect(w, r, "/resurs/"+res.ID+"/sparra?havd=1", http.StatusSeeOther)
+		return
+	}
 	s.log.Info("booking cancelled", "id", b.ID, "resource", b.ResourceID)
 	go s.notifyCancelled(b, res)
 	http.Redirect(w, r, "/mina?avbokad="+id, http.StatusSeeOther)
@@ -294,6 +302,21 @@ func (s *Server) handleResourceFeed(w http.ResponseWriter, r *http.Request, v *v
 // file is being handed to.
 func (s *Server) event(b store.Booking, res config.Resource, lang i18n.Lang) ical.Event {
 	l := string(lang)
+	if b.IsBlock() {
+		// A block is "the bike is away", not somebody's appointment: the
+		// reason is the headline, and nothing about cancelling it.
+		return ical.Event{
+			UID:         b.ID + "@booking.rudbeckia.nu",
+			Summary:     res.NameFor(l) + " – " + i18n.T(lang, "ical.block", b.Note),
+			Description: i18n.T(lang, "block.by") + " " + b.Name + "\n\n" + s.rt.BaseURL + "/bokning/" + b.ID,
+			Location:    res.LocationFor(l),
+			Start:       b.Start,
+			End:         b.End,
+			Created:     b.CreatedAt,
+			URL:         s.rt.BaseURL + "/bokning/" + b.ID,
+			Cancelled:   b.Status == store.StatusCancelled,
+		}
+	}
 	desc := i18n.T(lang, "ical.bookedby", b.Name)
 	if b.Apartment != "" {
 		desc += " (" + i18n.T(lang, "admin.apartmentShort", b.Apartment) + ")"

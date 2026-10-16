@@ -1,0 +1,109 @@
+{{define "content"}}
+{{$res := .Data.Resource}}{{$f := .Data.Form}}
+<nav class="crumbs">
+	<a href="/">{{t "nav.book"}}</a> <span aria-hidden="true">/</span>
+	<a href="/resurs/{{$res.ID}}">{{resName $res}}</a> <span aria-hidden="true">/</span>
+	<span>{{t "block.title"}}</span>
+</nav>
+
+<header class="resource-head">
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{t "block.title"}}</h1>
+	<p class="lede">{{t "block.lede" (resName $res)}}</p>
+</header>
+
+{{if .Data.New}}
+<div class="alert alert-ok" role="status">
+	<strong>{{t "block.done"}}</strong>
+	{{with .Data.Bumped}}<p>{{t "block.bumped" (count "booking" .)}}</p>{{end}}
+</div>
+{{end}}
+{{if .Data.Lifted}}<p class="alert alert-ok" role="status">{{t "block.lifted"}}.</p>{{end}}
+
+{{with .Data.Errors}}
+<div class="alert alert-error" role="alert">
+	<strong>{{t "block.failed"}}</strong>
+	<ul>{{range .}}<li>{{.Message}}</li>{{end}}</ul>
+</div>
+{{end}}
+
+{{with .Data.Conflicts}}
+<section class="panel">
+	<div class="panel-head"><h2>{{t "block.conflicts.who"}}</h2></div>
+	<ul class="booking-list">
+		{{range .}}
+		<li>
+			<a href="/bokning/{{.Booking.ID}}">
+				<strong>{{titleCase (interval .Start .End)}}</strong>
+				<small>{{.Booking.Name}}{{if .Booking.MMUsername}} · @{{.Booking.MMUsername}}{{end}}</small>
+			</a>
+		</li>
+		{{end}}
+	</ul>
+</section>
+{{end}}
+
+<section class="panel form-panel">
+	<form method="post" action="/resurs/{{$res.ID}}/sparra" class="booking-form">
+		<div class="field-grid">
+			<div class="field">
+				<label for="medlem">{{t "block.who"}} <small>Mattermost</small></label>
+				<div class="member-field">
+					<span class="member-at" aria-hidden="true">@</span>
+					<input id="medlem" name="medlem" type="text" required autocomplete="off"
+					       spellcheck="false" autocapitalize="none" aria-controls="medlem-lista"
+					       value="{{$f.Member}}" placeholder="{{t "form.who.placeholder"}}"
+					       data-member-search>
+					<ul class="combo-list" id="medlem-lista" role="listbox"
+					    aria-label="{{t "form.who.list"}}" hidden></ul>
+				</div>
+				<small class="hint">{{t "block.who.hint"}}</small>
+			</div>
+			<div class="field">
+				<label for="fran">{{t "block.from"}}</label>
+				<input id="fran" name="fran" type="date" required min="{{.Data.Today}}" value="{{or $f.From .Data.Today}}">
+			</div>
+			<div class="field">
+				<label for="till">{{t "block.to"}}</label>
+				<input id="till" name="till" type="date" required min="{{.Data.Today}}" value="{{or $f.To .Data.Today}}">
+				<small class="hint">{{t "block.to.hint"}}</small>
+			</div>
+			<div class="field field-wide">
+				<label for="orsak">{{t "block.reason"}}</label>
+				<input id="orsak" name="orsak" type="text" required maxlength="200"
+				       value="{{$f.Reason}}" placeholder="{{t "block.reason.sample"}}">
+				<small class="hint">{{t "block.reason.hint"}}</small>
+			</div>
+		</div>
+		{{if .Data.Conflicts}}
+		<label class="checkbox">
+			<input type="checkbox" name="avboka" value="1" {{if $f.Bump}}checked{{end}}>
+			<span>{{t "block.bump"}}<br><small class="hint">{{t "block.bump.hint"}}</small></span>
+		</label>
+		{{end}}
+		<div class="form-actions">
+			<button type="submit" class="button primary">{{t "block.submit"}}</button>
+			<a class="button ghost" href="/resurs/{{$res.ID}}">{{t "cancel"}}</a>
+		</div>
+	</form>
+</section>
+
+<section class="panel">
+	<div class="panel-head"><h2>{{t "block.current"}}</h2></div>
+	{{if .Data.Blocks}}
+	<ul class="booking-list big">
+		{{range .Data.Blocks}}
+		<li>
+			<a href="/bokning/{{.Booking.ID}}">
+				<span class="badge badge-block">{{t "block.label"}}</span>
+				<strong>{{titleCase (interval .Start .End)}}</strong>
+				<small>{{.Booking.Note}} · {{t "block.by"}} {{.Booking.Name}}{{if .Ongoing}} · <span class="badge badge-live">{{t "mine.ongoing"}}</span>{{end}}</small>
+			</a>
+		</li>
+		{{end}}
+	</ul>
+	{{else}}
+	<p class="empty">{{t "block.none"}}</p>
+	{{end}}
+</section>
+{{end}}
+{{template "base" .}}
